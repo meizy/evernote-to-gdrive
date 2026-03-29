@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum, auto
+import re
 
 import html2text
 
@@ -42,6 +43,11 @@ def enml_to_text(enml: str) -> str:
         text = _h2t.handle(enml)
     except Exception:
         return ""
+    # html2text emits Markdown syntax (heading markers, escaped special chars)
+    # since it targets Markdown output. Since we're targeting docx/Docs, strip
+    # those artifacts so the original characters are preserved.
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)  # ## Heading → Heading
+    text = re.sub(r'\\([*_`~#+\-.!\[\](){}|\\])', r'\1', text)  # \- → -  etc.
     return text.strip()
 
 

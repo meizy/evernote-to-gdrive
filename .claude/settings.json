@@ -6,7 +6,9 @@
       "WebFetch(domain:googleapis.dev)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(git rm:*)",
+      "WebFetch(domain:pypi.org)"
     ]
   }
 }

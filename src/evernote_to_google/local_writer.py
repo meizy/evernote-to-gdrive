@@ -223,9 +223,13 @@ def _build_doc(
         _add_paragraph(doc, f"Source: {note.source_url}")
         doc.add_paragraph()
 
-    # Body text — split on newlines to preserve paragraph structure
+    # Body text — split on newlines to preserve paragraph structure.
+    # html2text inserts \n\n between block elements (divs); collapse each \n\n
+    # to \n so consecutive Evernote lines don't get an extra blank paragraph.
+    # Intentional blank lines (\n\n\n\n in html2text output) collapse to \n\n,
+    # which still produces one blank paragraph after splitlines().
     if plain_text:
-        for line in plain_text.splitlines():
+        for line in plain_text.replace('\n\n', '\n').splitlines():
             _add_paragraph(doc, line)
 
     # Attachments

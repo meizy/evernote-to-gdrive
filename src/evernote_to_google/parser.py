@@ -137,7 +137,7 @@ def _parse_enex_with_stack(path: Path, root: Path) -> Iterator[Note]:
     relative = path.relative_to(root)
     parts = relative.parts  # e.g. ('Startups', 'Funding.enex') or ('Seculert.enex',)
     notebook = path.stem
-    stack = parts[0] if len(parts) > 2 else None  # only set for stack/notebook/...
+    stack = parts[0] if len(parts) == 2 else None  # only set for stack/notebook.enex
 
     tree = etree.parse(str(path))
     root_el = tree.getroot()

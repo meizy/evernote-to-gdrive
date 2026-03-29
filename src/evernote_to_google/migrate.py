@@ -11,6 +11,7 @@ from pathlib import Path
 
 from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
+from rich.table import Column
 
 from .classifier import NoteKind, attachment_drive_filename, classify
 from .parser import Note, load_notes
@@ -53,7 +54,8 @@ class MigrationOptions:
     notebooks: list[str]          # empty = all
     stacks: list[str]             # empty = all
     multi_attachment: MultiAttachmentPolicy
-    log_file: Path
+    log_file: Path | None
+    verbose: bool = False
 
 
 def run_migration(input_path: Path, options: MigrationOptions, drive=None, docs=None) -> list[MigrationRecord]:
@@ -61,9 +63,23 @@ def run_migration(input_path: Path, options: MigrationOptions, drive=None, docs=
 
     if options.stacks:
         stack_set = set(options.stacks)
+        available_stacks = {n.stack for n in notes if n.stack is not None}
+        missing = stack_set - available_stacks
+        if missing:
+            console.print(f"[red]Error: stack(s) not found: {', '.join(sorted(missing))}[/]")
+            if available_stacks:
+                console.print(f"  Available stacks: {', '.join(sorted(available_stacks))}")
+            return []
         notes = [n for n in notes if n.stack in stack_set]
     if options.notebooks:
         nb_set = set(options.notebooks)
+        available_notebooks = {n.notebook for n in notes}
+        missing = nb_set - available_notebooks
+        if missing:
+            console.print(f"[red]Error: notebook(s) not found: {', '.join(sorted(missing))}[/]")
+            if available_notebooks:
+                console.print(f"  Available notebooks: {', '.join(sorted(available_notebooks))}")
+            return []
         notes = [n for n in notes if n.notebook in nb_set]
 
     if options.dry_run:
@@ -73,22 +89,33 @@ def run_migration(input_path: Path, options: MigrationOptions, drive=None, docs=
     records: list[MigrationRecord] = []
     folder_cache: dict = {}
 
-    with Progress(
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        MofNCompleteColumn(),
-        TimeElapsedColumn(),
-        console=console,
-    ) as progress:
-        task = progress.add_task("Migrating notes", total=len(notes))
-
+    if options.verbose:
         for note in notes:
-            progress.update(task, description=f"[cyan]{note.notebook}[/] / {note.title[:40]}")
             record = _migrate_note(note=note, options=options, drive=drive, docs=docs, folder_cache=folder_cache)
             records.append(record)
-            progress.advance(task)
+            label = f"[cyan]{note.notebook}[/] / {note.title}"
+            if record.status == MigrationStatus.SKIPPED:
+                console.print(f"{label} - skipped")
+            else:
+                console.print(label)
+    else:
+        with Progress(
+            TextColumn("[progress.description]{task.description}", table_column=Column(width=55, no_wrap=True)),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Migrating notes", total=len(notes))
 
-    _write_log(records, options.log_file)
+            for note in notes:
+                progress.update(task, description=f"[cyan]{note.notebook}[/] / {note.title[:40]}")
+                record = _migrate_note(note=note, options=options, drive=drive, docs=docs, folder_cache=folder_cache)
+                records.append(record)
+                progress.advance(task)
+
+    if options.log_file:
+        _write_log(records, options.log_file)
     _print_summary(records)
     return records
 
