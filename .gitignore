@@ -5,7 +5,8 @@
 export/
 
 # Migration output
-evernote-export/
+Evernote Migration/
+migration.log
 
 # Database
 *.db
