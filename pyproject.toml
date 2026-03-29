@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "evernote-to-google"
+name = "evernote-to-gdrive"
 version = "0.1.0"
 description = "Migrate Evernote notes to Google Drive"
 requires-python = ">=3.10"

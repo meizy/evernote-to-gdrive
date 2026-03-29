@@ -1,5 +1,5 @@
 """
-CLI entry point for evernote-to-google.
+CLI entry point for evernote-to-gdrive.
 """
 
 from __future__ import annotations

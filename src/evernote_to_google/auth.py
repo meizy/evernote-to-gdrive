@@ -2,7 +2,7 @@
 Google OAuth 2.0 authentication for Drive and Docs APIs.
 
 On first run the user is sent through a browser-based consent flow.
-The resulting token is cached at ~/.config/evernote-to-google/token.json
+The resulting token is cached at ~/.config/evernote-to-gdrive/token.json
 and refreshed automatically on subsequent runs.
 
 The caller must place their OAuth client secrets at:

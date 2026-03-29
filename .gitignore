@@ -4,6 +4,9 @@
 # Evernote exports
 export/
 
+# Migration output
+evernote-export/
+
 # Database
 *.db
 
