@@ -68,6 +68,37 @@ def _add_paragraph(doc: Document, text: str) -> None:
         _set_para_rtl(para)
 
 
+def _add_file_hyperlink(doc: Document, display_text: str, filename: str) -> None:
+    """Add a paragraph with a clickable hyperlink to a sibling file."""
+    paragraph = doc.add_paragraph()
+
+    r_id = doc.part.relate_to(
+        filename,
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink",
+        is_external=True,
+    )
+
+    hyperlink = OxmlElement("w:hyperlink")
+    hyperlink.set(qn("r:id"), r_id)
+
+    run = OxmlElement("w:r")
+    rPr = OxmlElement("w:rPr")
+    rStyle = OxmlElement("w:rStyle")
+    rStyle.set(qn("w:val"), "Hyperlink")
+    rPr.append(rStyle)
+    run.append(rPr)
+
+    text_elem = OxmlElement("w:t")
+    text_elem.text = display_text
+    run.append(text_elem)
+    hyperlink.append(run)
+
+    paragraph._p.append(hyperlink)
+
+    if _is_rtl(display_text):
+        _set_para_rtl(paragraph)
+
+
 # ── filesystem timestamps ─────────────────────────────────────────────────────
 
 def _set_timestamps(path: Path, created: datetime | None, updated: datetime | None) -> None:
@@ -207,7 +238,7 @@ def _build_doc(
             filename = attachment_drive_filename(title, i, att)
             sibling = _unique_path(folder / filename)
             sibling.write_bytes(att.data)
-            _add_paragraph(doc, f"[Attachment: {sibling.name}]")
+            _add_file_hyperlink(doc, f"[Attachment: {sibling.name}]", sibling.name)
 
     return doc
 

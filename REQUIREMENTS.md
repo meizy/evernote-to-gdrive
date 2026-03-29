@@ -64,11 +64,35 @@ The stack name is derived from the subdirectory name in the `evernote-backup` ex
 
 ## Metadata Preservation
 
-- **Filename / Doc title**: Evernote note title
-- **Created date**: Stored in the Drive file's `description` field (Drive API does not allow setting `createdTime` on user files)
-- **Updated date**: Set as `modifiedTime` on the Drive file (`note.updated`, falling back to `note.created` if absent)
-- **Source URL**: If the note has a source URL, inserted as the first line of the Google Doc and in the file description
-- **Tags**: Not preserved — Evernote tags have no meaningful equivalent in Google Drive
+### Both modes (local and Google Drive)
+
+| Field | How |
+|---|---|
+| Title | Filename / doc name |
+| Notebook | Folder name |
+| Stack | Parent folder |
+| Content | Converted to plain text body |
+| Attachments | Images embedded inline; PDFs uploaded/written separately and linked |
+| Source URL | Inserted as first line of document body |
+| Updated date | File `mtime` (local) / `modifiedTime` on Drive file (google); falls back to `created` if absent |
+
+### Local only
+
+| Field | How |
+|---|---|
+| Created date | File birthtime (macOS/Windows) |
+
+### Google Drive only
+
+| Field | How |
+|---|---|
+| Created date | Drive file `description` field — `Created: YYYY-MM-DD HH:MM UTC` (Drive API does not allow setting `createdTime`) |
+| Source URL | Also appended to Drive file `description` field, in addition to the document body |
+
+### Not preserved
+
+- **Tags** — no meaningful equivalent in Google Drive
+- **Author, geolocation, reminders, encrypted content** — not extracted from ENEX
 
 ## `analyze` Subcommand
 
@@ -98,6 +122,26 @@ Uses OAuth 2.0 with scopes:
 
 Credentials stored locally in `.config/` under the project directory after first-run authorization.
 
+## Output Modes
+
+### `google` (default)
+
+Uploads directly to Google Drive. Creates Google Docs for text notes; embeds images inline; uploads PDF attachments as separate Drive files and inserts clickable links into the Doc.
+
+### `local`
+
+Writes notes to a local folder tree on disk (mirroring the stack/notebook hierarchy). Intended as a staging area: the folder can then be uploaded to Google Drive manually, with Drive's "Convert uploads" setting to auto-convert `.docx` files to Google Docs.
+
+| Note type | Local output |
+|---|---|
+| Attachment-only, single | Raw file (`<title>.<ext>`) |
+| Attachment-only, multi (`--multi-attachment=doc`) | `.docx` listing all attachments as clickable hyperlinks; each attachment written as a sibling file |
+| Attachment-only, multi (`--multi-attachment=files`) | One raw file per attachment (`<title>_<n>.<ext>`) |
+| Text-only | `<title>.docx` |
+| Text + attachments | `<title>.docx` with images embedded inline; PDFs written as sibling files and referenced as clickable hyperlinks within the doc |
+
+RTL paragraphs (Hebrew, Arabic) are detected and marked as bidirectional in the `.docx` XML so Word, LibreOffice, and Google Docs all render them correctly.
+
 ## CLI Interface
 
 ```
@@ -105,18 +149,21 @@ evernote-to-gdrive COMMAND [OPTIONS]
 
 Commands:
   analyze    Inspect .enex files and report statistics (no upload)
-  migrate    Migrate notes to Google Drive
+  migrate    Migrate notes to Google Drive or a local folder
 
 evernote-to-gdrive analyze INPUT [OPTIONS]
   --output-json PATH    Also write stats to a JSON file
 
 evernote-to-gdrive migrate INPUT [OPTIONS]
-  --drive-folder TEXT        Root folder name in My Drive [default: Evernote Migration]
-  --dry-run                  Authenticate with Google and create the migration root folder only (no uploads)
+  --output [google|local]    Output mode [default: google]
+  --output-dir PATH          Destination folder for local output mode [default: evernote-export]
+  --drive-folder TEXT        Root folder name in My Drive [default: Evernote Migration] (google mode only)
+  --dry-run                  Authenticate and create root Drive folder only (google mode only)
+  --stack TEXT               Only migrate notebooks in this stack (repeatable)
   --notebook TEXT            Only migrate this notebook (repeatable)
-  --skip-existing            Skip notes whose title already exists in target folder
+  --skip-existing            Skip notes whose output file already exists in the target folder
   --multi-attachment [doc|files]  How to handle notes with multiple attachments [default: doc]
-  --log-file PATH            Write migration log [default: migration.log]
+  --log-file PATH            Write migration log (CSV) [default: migration.log]
 ```
 
 ## Progress & Logging
@@ -145,3 +192,4 @@ evernote-to-gdrive migrate INPUT [OPTIONS]
 - `google-api-python-client` + `google-auth-oauthlib` — Drive and Docs APIs
 - `rich` — progress display and console output
 - `html2text` — converting Evernote HTML body to plain text / Docs content
+- `python-docx` — generating `.docx` files for local output mode (text, embedded images, and hyperlinked PDF attachments)
