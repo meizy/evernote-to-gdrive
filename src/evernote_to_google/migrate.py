@@ -189,7 +189,10 @@ def _migrate_note_api(note, classified, kind_label, options, drive, docs, folder
             return MigrationRecord(notebook=note.notebook, title=note.title, kind=kind_label,
                                    status=MigrationStatus.SUCCESS, output=ids)
         else:
-            file_id = create_attachment_index_doc(drive, docs, title=note.title, note=note,
+            _embeddable = {"image/jpeg", "image/png", "image/gif"}
+            has_siblings = any(att.mime not in _embeddable for att in note.attachments)
+            doc_title = f"{note.title}_0" if has_siblings else note.title
+            file_id = create_attachment_index_doc(drive, docs, title=doc_title, note=note,
                                                   attachments=note.attachments, parent_id=notebook_id,
                                                   description=description, modified_time=modified_time)
             return MigrationRecord(notebook=note.notebook, title=note.title, kind=kind_label,
