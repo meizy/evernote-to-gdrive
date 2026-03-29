@@ -231,7 +231,6 @@ def _build_doc(
     # Attachments
     for i, att in enumerate(attachments, start=1):
         if att.mime in _EMBEDDABLE_IMAGE_MIME:
-            doc.add_paragraph()
             doc.add_picture(io.BytesIO(att.data), width=Inches(5))
         else:
             # Write PDF (or other) as a sibling file; insert a reference line
