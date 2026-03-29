@@ -1,0 +1,16 @@
+# Sensitive config
+.config/
+
+# Evernote exports
+export/
+
+# Database
+*.db
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+
+# macOS
+.DS_Store

@@ -1,0 +1,147 @@
+# Evernote → Google Drive Migration Tool
+
+## Overview
+
+A Python CLI tool (`evernote-to-google`) that migrates Evernote notes to Google Drive, preserving content structure and organization.
+
+## Input
+
+Evernote exports notes as `.enex` files (Evernote XML format). The user exports notebooks from the Evernote desktop/web app, producing one `.enex` file per notebook (or one for all notes).
+
+The tool accepts:
+- A single `.enex` file
+- A directory of `.enex` files (one per notebook)
+
+## Note Classification & Output Mapping
+
+Each note falls into one of these categories:
+
+| Note type | Condition | Google Drive output |
+|---|---|---|
+| **Attachment-only, single** | No meaningful text, exactly 1 attachment | Upload the raw file — note title becomes the filename |
+| **Attachment-only, multiple** | No meaningful text, ≥2 attachments | See multi-attachment policy below |
+| **Text + attachment(s)** | Has text body AND ≥1 attachment | Google Doc with text; attachments embedded or linked (see below) |
+| **Text-only** | Has text body, no attachments | Google Doc |
+
+"Meaningful text" means non-empty after stripping Evernote's HTML markup and whitespace.
+
+### Multi-attachment policy (`--multi-attachment`)
+
+Controlled by a CLI flag, default: `doc`.
+
+| Flag value | Behavior |
+|---|---|
+| `doc` *(default)* | Create a Google Doc listing all attachments; upload each file to Drive and insert links |
+| `files` | Upload each attachment as a separate file, named `<note_title>_<n>.<ext>` (e.g. `xxx_1.pdf`, `xxx_2.pdf`) |
+
+### Image embedding in Google Docs
+
+The Google Docs API supports **inline image insertion** (`insertInlineImage`) for JPEG, PNG, and GIF. Images are embedded directly in the document body.
+
+**PDFs cannot be embedded** via the Docs API. PDF attachments in text+attachment notes are uploaded as separate Drive files named `<note_title>_<n>.pdf` and linked from the Google Doc (a clearly labelled hyperlink is inserted at the attachment's position in the document).
+
+## Notebook → Folder Mapping
+
+Evernote notebooks can be grouped into **stacks**. The folder hierarchy in Drive mirrors this structure inside a configurable root folder in **My Drive**.
+
+```
+My Drive/
+  Evernote Migration/        ← configurable root
+    Startups/                ← stack
+      Funding/               ← notebook inside stack
+        photo.jpg
+        scan.pdf
+        Note with text       ← Google Doc
+      ScaleDB/               ← notebook inside stack
+        ...
+    Seculert/                ← notebook with no stack (directly under root)
+      ...
+```
+
+The stack name is derived from the subdirectory name in the `evernote-backup` export layout:
+- `export/<notebook>.enex` → no stack, folder goes directly under root
+- `export/<stack>/<notebook>.enex` → stack folder created under root, notebook folder inside it
+
+## Metadata Preservation
+
+- **Filename / Doc title**: Evernote note title
+- **Created date**: Stored in the Drive file's `description` field (Drive API does not allow setting `createdTime` on user files)
+- **Updated date**: Set as `modifiedTime` on the Drive file (`note.updated`, falling back to `note.created` if absent)
+- **Source URL**: If the note has a source URL, inserted as the first line of the Google Doc and in the file description
+- **Tags**: Not preserved — Evernote tags have no meaningful equivalent in Google Drive
+
+## `analyze` Subcommand
+
+Before migrating, the user can run:
+
+```
+evernote-to-google analyze INPUT
+```
+
+Output (to console and optionally a JSON file):
+
+- Total note count
+- Per-notebook note counts
+- Classification breakdown: attachment-only / text+attachment / text-only
+- Attachment counts by type (JPEG, PNG, PDF, other)
+- Total attachment size (MB), largest single attachment
+- Notes with multiple attachments (count)
+- Any notes that would be skipped or need manual review (e.g. encrypted sections)
+
+This lets the user gauge migration scope and expected Drive storage usage before running the full migration.
+
+## Google Authentication
+
+Uses OAuth 2.0 with scopes:
+- `https://www.googleapis.com/auth/drive.file` — create/manage files the app creates
+- `https://www.googleapis.com/auth/documents` — create and edit Google Docs
+
+Credentials stored locally in `.config/` under the project directory after first-run authorization.
+
+## CLI Interface
+
+```
+evernote-to-google COMMAND [OPTIONS]
+
+Commands:
+  analyze    Inspect .enex files and report statistics (no upload)
+  migrate    Migrate notes to Google Drive
+
+evernote-to-google analyze INPUT [OPTIONS]
+  --output-json PATH    Also write stats to a JSON file
+
+evernote-to-google migrate INPUT [OPTIONS]
+  --drive-folder TEXT        Root folder name in My Drive [default: Evernote Migration]
+  --dry-run                  Authenticate with Google and create the migration root folder only (no uploads)
+  --notebook TEXT            Only migrate this notebook (repeatable)
+  --skip-existing            Skip notes whose title already exists in target folder
+  --multi-attachment [doc|files]  How to handle notes with multiple attachments [default: doc]
+  --log-file PATH            Write migration log [default: migration.log]
+```
+
+## Progress & Logging
+
+- Console progress bar per note (via `rich`)
+- Log file records: note title, notebook, classification, Drive file ID(s), status (success / skipped / error)
+- Final summary: total notes, counts per category, total uploaded size, errors
+
+## Error Handling
+
+- **Duplicate filenames**: append `(2)`, `(3)`, etc.
+- **Unsupported attachment types**: upload as-is with original MIME type; log a warning
+- **API rate limits**: exponential backoff with retry (max 5 attempts)
+- **Partial failures**: continue migration; report failed notes at the end without halting the run
+
+## Out of Scope (v1)
+
+- Evernote note links between notes
+- Evernote internal resources (ink notes, encrypted text sections)
+- Shared notebooks or collaboration features
+- Incremental sync / two-way sync
+
+## Dependencies (planned)
+
+- `lxml` — ENEX parsing
+- `google-api-python-client` + `google-auth-oauthlib` — Drive and Docs APIs
+- `rich` — progress display and console output
+- `html2text` — converting Evernote HTML body to plain text / Docs content

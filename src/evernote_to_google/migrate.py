@@ -1,0 +1,235 @@
+"""
+Migration orchestration: classify notes and dispatch to Drive/Docs or local folder.
+"""
+
+from __future__ import annotations
+
+import csv
+from dataclasses import dataclass
+from enum import Enum
+from pathlib import Path
+
+from rich.console import Console
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
+
+from .classifier import NoteKind, attachment_drive_filename, classify
+from .parser import Note, load_notes
+
+console = Console()
+
+
+class MultiAttachmentPolicy(str, Enum):
+    DOC = "doc"
+    FILES = "files"
+
+
+class OutputMode(str, Enum):
+    GOOGLE = "google"
+    LOCAL = "local"
+
+
+class MigrationStatus(str, Enum):
+    SUCCESS = "success"
+    SKIPPED = "skipped"
+    ERROR = "error"
+
+
+@dataclass
+class MigrationRecord:
+    notebook: str
+    title: str
+    kind: str
+    status: MigrationStatus
+    output: list[str]   # Drive file IDs (api) or local paths (local)
+    error: str = ""
+
+
+@dataclass
+class MigrationOptions:
+    output_mode: OutputMode
+    # API mode
+    drive_folder: str
+    dry_run: bool
+    skip_existing: bool
+    # Local mode
+    output_dir: Path
+    # Shared
+    notebooks: list[str]          # empty = all
+    stacks: list[str]             # empty = all
+    multi_attachment: MultiAttachmentPolicy
+    log_file: Path
+
+
+def run_migration(input_path: Path, options: MigrationOptions, drive=None, docs=None) -> list[MigrationRecord]:
+    notes = list(load_notes(input_path))
+
+    if options.stacks:
+        stack_set = set(options.stacks)
+        notes = [n for n in notes if n.stack in stack_set]
+    if options.notebooks:
+        nb_set = set(options.notebooks)
+        notes = [n for n in notes if n.notebook in nb_set]
+
+    if options.dry_run:
+        _dry_run(notes, options, drive)
+        return []
+
+    records: list[MigrationRecord] = []
+    folder_cache: dict = {}
+
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Migrating notes", total=len(notes))
+
+        for note in notes:
+            progress.update(task, description=f"[cyan]{note.notebook}[/] / {note.title[:40]}")
+            record = _migrate_note(note=note, options=options, drive=drive, docs=docs, folder_cache=folder_cache)
+            records.append(record)
+            progress.advance(task)
+
+    _write_log(records, options.log_file)
+    _print_summary(records)
+    return records
+
+
+# ── dry run ───────────────────────────────────────────────────────────────────
+
+def _dry_run(notes: list[Note], options: MigrationOptions, drive) -> None:
+    """Create only the migration root folder in Drive to validate auth/access."""
+    from .drive import get_or_create_folder
+    root_id = get_or_create_folder(drive, options.drive_folder)
+    console.print(f"  [green]Created root folder:[/] {options.drive_folder} (id: {root_id})")
+    console.print("\n[green]Dry run complete.[/]")
+
+
+# ── per-note dispatch ─────────────────────────────────────────────────────────
+
+def _migrate_note(note: Note, options: MigrationOptions, drive, docs, folder_cache: dict) -> MigrationRecord:
+    classified = classify(note)
+    kind_label = classified.kind.name.lower()
+
+    try:
+        if options.output_mode == OutputMode.GOOGLE:
+            return _migrate_note_api(note, classified, kind_label, options, drive, docs, folder_cache)
+        else:
+            from .local_writer import write_note, note_folder, _safe_name
+            if options.skip_existing:
+                folder = note_folder(options.output_dir, note)
+                safe_title = _safe_name(note.title)
+                if any(folder.glob(f"{safe_title}.*")):
+                    return MigrationRecord(
+                        notebook=note.notebook, title=note.title, kind=kind_label,
+                        status=MigrationStatus.SKIPPED, output=[],
+                    )
+            paths = write_note(classified, options.output_dir, options.multi_attachment.value)
+            return MigrationRecord(
+                notebook=note.notebook, title=note.title, kind=kind_label,
+                status=MigrationStatus.SUCCESS, output=[str(p) for p in paths],
+            )
+
+    except Exception as exc:
+        console.print(f"[red]  Error: {note.title!r}: {exc}")
+        return MigrationRecord(
+            notebook=note.notebook, title=note.title, kind=kind_label,
+            status=MigrationStatus.ERROR, output=[], error=str(exc),
+        )
+
+
+def _migrate_note_api(note, classified, kind_label, options, drive, docs, folder_cache) -> MigrationRecord:
+    from .docs import create_attachment_index_doc, create_doc
+    from .drive import ensure_folder_path, file_exists, make_description, upload_file
+
+    cache_key = f"{note.stack or ''}/{note.notebook}"
+    if cache_key not in folder_cache:
+        folder_cache[cache_key] = ensure_folder_path(
+            drive, options.drive_folder, note.notebook, stack=note.stack
+        )
+    _, notebook_id = folder_cache[cache_key]
+
+    description = make_description(note.created, note.source_url)
+
+    if options.skip_existing and file_exists(drive, note.title, notebook_id):
+        return MigrationRecord(
+            notebook=note.notebook, title=note.title, kind=kind_label,
+            status=MigrationStatus.SKIPPED, output=[],
+        )
+
+    kind = classified.kind
+    plain_text = classified.plain_text
+    modified_time = note.updated or note.created
+
+    if kind == NoteKind.TEXT_ONLY:
+        file_id = create_doc(drive, docs, title=note.title, plain_text=plain_text,
+                             note=note, attachments=[], parent_id=notebook_id, description=description,
+                             modified_time=modified_time)
+        return MigrationRecord(notebook=note.notebook, title=note.title, kind=kind_label,
+                               status=MigrationStatus.SUCCESS, output=[file_id])
+
+    elif kind == NoteKind.ATTACHMENT_ONLY_SINGLE:
+        att = note.attachments[0]
+        file_id = upload_file(drive, name=note.title, data=att.data, mime_type=att.mime,
+                              parent_id=notebook_id, description=description,
+                              modified_time=modified_time)
+        return MigrationRecord(notebook=note.notebook, title=note.title, kind=kind_label,
+                               status=MigrationStatus.SUCCESS, output=[file_id])
+
+    elif kind == NoteKind.ATTACHMENT_ONLY_MULTI:
+        if options.multi_attachment == MultiAttachmentPolicy.FILES:
+            ids = []
+            for i, att in enumerate(note.attachments, start=1):
+                fname = attachment_drive_filename(note.title, i, att)
+                ids.append(upload_file(drive, name=fname, data=att.data, mime_type=att.mime,
+                                       parent_id=notebook_id, description=description,
+                                       modified_time=modified_time))
+            return MigrationRecord(notebook=note.notebook, title=note.title, kind=kind_label,
+                                   status=MigrationStatus.SUCCESS, output=ids)
+        else:
+            file_id = create_attachment_index_doc(drive, docs, title=note.title, note=note,
+                                                  attachments=note.attachments, parent_id=notebook_id,
+                                                  description=description, modified_time=modified_time)
+            return MigrationRecord(notebook=note.notebook, title=note.title, kind=kind_label,
+                                   status=MigrationStatus.SUCCESS, output=[file_id])
+
+    elif kind == NoteKind.TEXT_WITH_ATTACHMENTS:
+        file_id = create_doc(drive, docs, title=note.title, plain_text=plain_text,
+                             note=note, attachments=note.attachments, parent_id=notebook_id,
+                             description=description, modified_time=modified_time)
+        return MigrationRecord(notebook=note.notebook, title=note.title, kind=kind_label,
+                               status=MigrationStatus.SUCCESS, output=[file_id])
+
+    raise ValueError(f"Unhandled note kind: {kind}")
+
+
+# ── logging & summary ─────────────────────────────────────────────────────────
+
+def _write_log(records: list[MigrationRecord], log_file: Path) -> None:
+    with log_file.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["notebook", "title", "kind", "status", "output", "error"])
+        for r in records:
+            writer.writerow([r.notebook, r.title, r.kind, r.status.value, "|".join(r.output), r.error])
+
+
+def _print_summary(records: list[MigrationRecord]) -> None:
+    total = len(records)
+    success = sum(1 for r in records if r.status == MigrationStatus.SUCCESS)
+    skipped = sum(1 for r in records if r.status == MigrationStatus.SKIPPED)
+    errors = sum(1 for r in records if r.status == MigrationStatus.ERROR)
+
+    console.print()
+    console.rule("[bold]Migration Summary")
+    console.print(f"  Total:   {total}")
+    console.print(f"  [green]Success: {success}")
+    if skipped:
+        console.print(f"  [yellow]Skipped: {skipped}")
+    if errors:
+        console.print(f"  [red]Errors:  {errors}")
+        for r in records:
+            if r.status == MigrationStatus.ERROR:
+                console.print(f"  [red]- {r.notebook}/{r.title}: {r.error}")
+    console.print()
