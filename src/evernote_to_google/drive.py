@@ -5,6 +5,7 @@ Google Drive API operations: folder management and file uploads.
 from __future__ import annotations
 
 import io
+import re
 import time
 from datetime import datetime
 from typing import Any
@@ -60,16 +61,27 @@ def get_or_create_folder(drive, name: str, parent_id: str | None = None) -> str:
     return folder["id"]
 
 
+def get_or_create_folder_path(drive, path: str) -> str:
+    """Create nested folders for a slash-separated path and return the leaf folder ID."""
+    parts = [p for p in re.split(r"[/\\]", path) if p]
+    parent_id: str | None = None
+    for part in parts:
+        parent_id = get_or_create_folder(drive, part, parent_id=parent_id)
+    assert parent_id is not None
+    return parent_id
+
+
 def ensure_folder_path(drive, root_name: str, notebook_name: str, stack: str | None = None) -> tuple[str, str]:
     """
     Ensure root_folder/[stack/]notebook_folder exist in My Drive.
+    root_name may be a slash-separated path (e.g. "a/b/c").
     Returns (root_id, notebook_id).
 
     Drive structure:
       root_name/notebook_name/           (no stack)
       root_name/stack/notebook_name/     (with stack)
     """
-    root_id = get_or_create_folder(drive, root_name)
+    root_id = get_or_create_folder_path(drive, root_name)
     parent_id = root_id
     if stack:
         parent_id = get_or_create_folder(drive, stack, parent_id=root_id)

@@ -157,10 +157,10 @@ evernote-to-gdrive analyze INPUT [OPTIONS]
   --output-json PATH    Also write stats to a JSON file
 
 evernote-to-gdrive migrate INPUT [OPTIONS]
-  --output [google|local]    Output mode [default: google]
-  --output-dir PATH          Destination folder for local output mode [default: evernote-export]
-  --drive-folder TEXT        Root folder name in My Drive [default: Evernote Migration] (google mode only)
-  --dry-run                  Authenticate and create root Drive folder only (google mode only)
+  --output [gdrive|local]    Output mode [default: gdrive]
+  --dest TEXT                Output destination: Drive folder path (gdrive, supports a/b/c) or local folder
+                             (local, relative or absolute). Default: 'Evernote Migration'
+  --dry-run                  Authenticate and create root Drive folder only (gdrive mode only)
   --stack TEXT               Only migrate notebooks in this stack (repeatable)
   --notebook TEXT            Only migrate this notebook (repeatable)
   --skip-existing            Skip notes whose output file already exists in the target folder

@@ -24,7 +24,7 @@ class MultiAttachmentPolicy(str, Enum):
 
 
 class OutputMode(str, Enum):
-    GOOGLE = "google"
+    GOOGLE = "gdrive"
     LOCAL = "local"
 
 
@@ -47,13 +47,9 @@ class MigrationRecord:
 @dataclass
 class MigrationOptions:
     output_mode: OutputMode
-    # API mode
-    drive_folder: str
+    dest: str          # Drive folder path (gdrive) or local output dir (local)
     dry_run: bool
     skip_existing: bool
-    # Local mode
-    output_dir: Path
-    # Shared
     notebooks: list[str]          # empty = all
     stacks: list[str]             # empty = all
     multi_attachment: MultiAttachmentPolicy
@@ -101,9 +97,9 @@ def run_migration(input_path: Path, options: MigrationOptions, drive=None, docs=
 
 def _dry_run(notes: list[Note], options: MigrationOptions, drive) -> None:
     """Create only the migration root folder in Drive to validate auth/access."""
-    from .drive import get_or_create_folder
-    root_id = get_or_create_folder(drive, options.drive_folder)
-    console.print(f"  [green]Created root folder:[/] {options.drive_folder} (id: {root_id})")
+    from .drive import get_or_create_folder_path
+    root_id = get_or_create_folder_path(drive, options.dest)
+    console.print(f"  [green]Created root folder:[/] {options.dest} (id: {root_id})")
     console.print("\n[green]Dry run complete.[/]")
 
 
@@ -119,14 +115,14 @@ def _migrate_note(note: Note, options: MigrationOptions, drive, docs, folder_cac
         else:
             from .local_writer import write_note, note_folder, _safe_name
             if options.skip_existing:
-                folder = note_folder(options.output_dir, note)
+                folder = note_folder(Path(options.dest), note)
                 safe_title = _safe_name(note.title)
                 if any(folder.glob(f"{safe_title}.*")) or any(folder.glob(f"{safe_title}_0.*")):
                     return MigrationRecord(
                         notebook=note.notebook, title=note.title, kind=kind_label,
                         status=MigrationStatus.SKIPPED, output=[],
                     )
-            paths = write_note(classified, options.output_dir, options.multi_attachment.value)
+            paths = write_note(classified, Path(options.dest), options.multi_attachment.value)
             return MigrationRecord(
                 notebook=note.notebook, title=note.title, kind=kind_label,
                 status=MigrationStatus.SUCCESS, output=[str(p) for p in paths],
@@ -147,7 +143,7 @@ def _migrate_note_api(note, classified, kind_label, options, drive, docs, folder
     cache_key = f"{note.stack or ''}/{note.notebook}"
     if cache_key not in folder_cache:
         folder_cache[cache_key] = ensure_folder_path(
-            drive, options.drive_folder, note.notebook, stack=note.stack
+            drive, options.dest, note.notebook, stack=note.stack
         )
     _, notebook_id = folder_cache[cache_key]
 

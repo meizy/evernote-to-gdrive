@@ -41,14 +41,12 @@ def analyze(input: Path, output_json: Path | None):
 @main.command()
 @click.argument("input", type=click.Path(exists=True, path_type=Path))
 @click.option("--output", "output_mode",
-              type=click.Choice(["google", "local"], case_sensitive=False),
-              default="google", show_default=True,
-              help="google: upload to Google Drive. local: save to a local folder.")
-@click.option("--output-dir", type=click.Path(path_type=Path),
-              default="evernote-export", show_default=True,
-              help="Destination folder for local output mode.")
-@click.option("--drive-folder", default="Evernote Migration", show_default=True,
-              help="Root folder name in My Drive (api mode only).")
+              type=click.Choice(["gdrive", "local"], case_sensitive=False),
+              default="gdrive", show_default=True,
+              help="gdrive: upload to Google Drive. local: save to a local folder.")
+@click.option("--dest", default=None,
+              help="Output destination: Drive folder path (gdrive, supports a/b/c) or local folder (local). "
+                   "Defaults: 'Evernote Migration' (gdrive), 'evernote-export' (local).")
 @click.option("--dry-run", is_flag=True, default=False,
               help="Authenticate and create root Drive folder only (api mode only).")
 @click.option("--stack", "stacks", multiple=True,
@@ -67,8 +65,7 @@ def analyze(input: Path, output_json: Path | None):
 def migrate(
     input: Path,
     output_mode: str,
-    output_dir: Path,
-    drive_folder: str,
+    dest: str | None,
     dry_run: bool,
     stacks: tuple[str, ...],
     notebooks: tuple[str, ...],
@@ -76,15 +73,17 @@ def migrate(
     multi_attachment: str,
     log_file: Path,
 ):
-    """Migrate Evernote notes to Google Drive (api) or a local folder (local)."""
+    """Migrate Evernote notes to Google Drive (gdrive) or a local folder (local)."""
     mode = OutputMode(output_mode.lower())
+
+    if dest is None:
+        dest = "Evernote Migration"
 
     options = MigrationOptions(
         output_mode=mode,
-        drive_folder=drive_folder,
+        dest=dest,
         dry_run=dry_run,
         skip_existing=skip_existing,
-        output_dir=output_dir,
         stacks=list(stacks),
         notebooks=list(notebooks),
         multi_attachment=MultiAttachmentPolicy(multi_attachment.lower()),
@@ -100,12 +99,12 @@ def migrate(
         drive, docs = get_services()
         console.print("[green]Authenticated.")
     else:
-        console.print(f"[dim]Writing to local folder: {output_dir.resolve()}")
+        console.print(f"[dim]Writing to local folder: {Path(dest).resolve()}")
 
     run_migration(input, options, drive, docs)
 
     if mode == OutputMode.LOCAL:
-        console.print(f"\n[green]Done.[/] Upload the folder [bold]{output_dir.resolve()}[/] to Google Drive.")
+        console.print(f"\n[green]Done.[/] Upload the folder [bold]{Path(dest).resolve()}[/] to Google Drive.")
         console.print("[dim]Tip: enable 'Convert uploads' in Drive settings to auto-convert .docx to Google Docs.")
     else:
         console.print(f"[dim]Log written to {log_file}")
