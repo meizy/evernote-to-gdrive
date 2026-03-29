@@ -291,7 +291,9 @@ def write_note(
 
     elif classified.kind == NoteKind.TEXT_WITH_ATTACHMENTS:
         doc = _build_doc(note.title, classified.plain_text, note, note.attachments, folder)
-        dest = _unique_path(folder / f"{safe_title}.docx")
+        has_siblings = any(att.mime not in _EMBEDDABLE_IMAGE_MIME for att in note.attachments)
+        docx_name = f"{safe_title}_0.docx" if has_siblings else f"{safe_title}.docx"
+        dest = _unique_path(folder / docx_name)
         doc.save(str(dest))
         _set_timestamps(dest, note.created, note.updated)
         return [dest]

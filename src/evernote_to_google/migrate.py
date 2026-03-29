@@ -121,7 +121,7 @@ def _migrate_note(note: Note, options: MigrationOptions, drive, docs, folder_cac
             if options.skip_existing:
                 folder = note_folder(options.output_dir, note)
                 safe_title = _safe_name(note.title)
-                if any(folder.glob(f"{safe_title}.*")):
+                if any(folder.glob(f"{safe_title}.*")) or any(folder.glob(f"{safe_title}_0.*")):
                     return MigrationRecord(
                         notebook=note.notebook, title=note.title, kind=kind_label,
                         status=MigrationStatus.SKIPPED, output=[],
@@ -196,7 +196,10 @@ def _migrate_note_api(note, classified, kind_label, options, drive, docs, folder
                                    status=MigrationStatus.SUCCESS, output=[file_id])
 
     elif kind == NoteKind.TEXT_WITH_ATTACHMENTS:
-        file_id = create_doc(drive, docs, title=note.title, plain_text=plain_text,
+        _embeddable = {"image/jpeg", "image/png", "image/gif"}
+        has_siblings = any(att.mime not in _embeddable for att in note.attachments)
+        doc_title = f"{note.title}_0" if has_siblings else note.title
+        file_id = create_doc(drive, docs, title=doc_title, plain_text=plain_text,
                              note=note, attachments=note.attachments, parent_id=notebook_id,
                              description=description, modified_time=modified_time)
         return MigrationRecord(notebook=note.notebook, title=note.title, kind=kind_label,
