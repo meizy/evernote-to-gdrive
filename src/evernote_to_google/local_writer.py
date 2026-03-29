@@ -238,6 +238,7 @@ def _build_doc(
             filename = attachment_drive_filename(title, i, att)
             sibling = _unique_path(folder / filename)
             sibling.write_bytes(att.data)
+            _set_timestamps(sibling, note.created, note.updated)
             _add_file_hyperlink(doc, f"[Attachment: {sibling.name}]", sibling.name)
 
     return doc

@@ -111,6 +111,8 @@ def create_doc(
         note=note,
         attachments=attachments,
         parent_id=parent_id,
+        description=description,
+        modified_time=modified_time,
     )
 
     if requests:
@@ -155,7 +157,8 @@ def create_attachment_index_doc(
 # ── internals ─────────────────────────────────────────────────────────────────
 
 def _build_requests(
-    drive, docs, doc_id: str, plain_text: str, note: Note, attachments: list[Attachment], parent_id: str
+    drive, docs, doc_id: str, plain_text: str, note: Note, attachments: list[Attachment], parent_id: str,
+    description: str | None = None, modified_time=None,
 ) -> list[dict]:
     """
     Build a list of Docs API batchUpdate requests that populate the document.
@@ -191,6 +194,8 @@ def _build_requests(
                 data=att.data,
                 mime_type=att.mime,
                 parent_id=parent_id,
+                description=description,
+                modified_time=modified_time,
             )
             url = drive_url(file_id)
             segments.append(_LinkSegment(label=f"[{filename}]", url=url))
