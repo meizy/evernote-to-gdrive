@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-evernote-to-google = "evernote_to_google.cli:main"
+evernote-to-gdrive = "evernote_to_google.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

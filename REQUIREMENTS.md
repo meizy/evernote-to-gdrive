@@ -2,7 +2,7 @@
 
 ## Overview
 
-A Python CLI tool (`evernote-to-google`) that migrates Evernote notes to Google Drive, preserving content structure and organization.
+A Python CLI tool (`evernote-to-gdrive`) that migrates Evernote notes to Google Drive, preserving content structure and organization.
 
 ## Input
 
@@ -75,7 +75,7 @@ The stack name is derived from the subdirectory name in the `evernote-backup` ex
 Before migrating, the user can run:
 
 ```
-evernote-to-google analyze INPUT
+evernote-to-gdrive analyze INPUT
 ```
 
 Output (to console and optionally a JSON file):
@@ -101,16 +101,16 @@ Credentials stored locally in `.config/` under the project directory after first
 ## CLI Interface
 
 ```
-evernote-to-google COMMAND [OPTIONS]
+evernote-to-gdrive COMMAND [OPTIONS]
 
 Commands:
   analyze    Inspect .enex files and report statistics (no upload)
   migrate    Migrate notes to Google Drive
 
-evernote-to-google analyze INPUT [OPTIONS]
+evernote-to-gdrive analyze INPUT [OPTIONS]
   --output-json PATH    Also write stats to a JSON file
 
-evernote-to-google migrate INPUT [OPTIONS]
+evernote-to-gdrive migrate INPUT [OPTIONS]
   --drive-folder TEXT        Root folder name in My Drive [default: Evernote Migration]
   --dry-run                  Authenticate with Google and create the migration root folder only (no uploads)
   --notebook TEXT            Only migrate this notebook (repeatable)
