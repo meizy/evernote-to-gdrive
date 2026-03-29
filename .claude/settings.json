@@ -3,7 +3,10 @@
     "allow": [
       "WebFetch(domain:github.com)",
       "WebFetch(domain:dev.evernote.com)",
-      "WebFetch(domain:googleapis.dev)"
+      "WebFetch(domain:googleapis.dev)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ]
   }
 }

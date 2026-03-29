@@ -142,6 +142,8 @@ Writes notes to a local folder tree on disk (mirroring the stack/notebook hierar
 
 RTL paragraphs (Hebrew, Arabic) are detected and marked as bidirectional in the `.docx` XML so Word, LibreOffice, and Google Docs all render them correctly.
 
+For Google Docs uploads, if the note title or any paragraph contains RTL characters, all paragraphs in the document are set to `RIGHT_TO_LEFT` direction via the Docs API `batchUpdate`. This is a document-level setting (not per-paragraph) due to API constraints.
+
 ## CLI Interface
 
 ```
