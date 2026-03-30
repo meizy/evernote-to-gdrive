@@ -116,17 +116,16 @@ def migrate(
         console.print("[green]Authenticated.")
     else:
         if dest == "null":
-            console.print("[dim]Null run — processing notes without writing any files.")
+            console.print("[dim]Null run — output is written to a temp dir and discarded.")
         else:
-            console.print(f"[dim]Writing to local folder: {Path(dest).resolve()}")
+            console.print(f"[dim]Writing to local folder: '{Path(dest).resolve()}'")
 
     records = run_migration(input, options, drive, docs)
 
     if not records:
         console.print("[yellow]No notes migrated.[/]")
     elif mode == OutputMode.LOCAL:
-        console.print(f"\n[green]Done.[/] Upload the folder [bold]{Path(dest).resolve()}[/] to Google Drive.")
-        console.print("[dim]Tip: enable 'Convert uploads' in Drive settings to auto-convert .docx to Google Docs.")
+        console.print("[green]Done.[/]")
     else:
         if log_file:
-            console.print(f"[dim]Log written to {log_file}")
+            console.print(f"[dim]Log written to '{log_file}'")

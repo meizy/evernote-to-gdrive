@@ -5,7 +5,9 @@ Migration orchestration: classify notes and dispatch to Drive/Docs or local fold
 from __future__ import annotations
 
 import csv
+import shutil
 import sys
+import tempfile
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -105,30 +107,41 @@ def run_migration(input_path: Path, options: MigrationOptions, drive=None, docs=
     records: list[MigrationRecord] = []
     folder_cache: dict = {}
 
-    if options.verbose:
-        for note in notes:
-            record = _migrate_note(note=note, options=options, drive=drive, docs=docs, folder_cache=folder_cache)
-            records.append(record)
-            label = f"[cyan]{note.notebook}[/] / {note.title}"
-            if record.status == MigrationStatus.SKIPPED:
-                console.print(f"{label} - skipped")
-            else:
-                console.print(label)
-    else:
-        with Progress(
-            TextColumn("[progress.description]{task.description}", table_column=Column(width=55, no_wrap=True)),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TimeElapsedColumn(),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Migrating notes", total=len(notes))
+    # In null mode create one shared temp dir for the whole run instead of
+    # one per note; _migrate_note_local writes there and we clean up at the end.
+    null_tmp: Path | None = None
+    if options.output_mode == OutputMode.LOCAL and options.dest == "null":
+        null_tmp = Path(tempfile.mkdtemp())
+        options = MigrationOptions(**{**options.__dict__, "dest": str(null_tmp)})
 
+    try:
+        if options.verbose:
             for note in notes:
-                progress.update(task, description=f"[cyan]{note.notebook}[/] / {note.title[:40]}")
                 record = _migrate_note(note=note, options=options, drive=drive, docs=docs, folder_cache=folder_cache)
                 records.append(record)
-                progress.advance(task)
+                label = f"[cyan]{note.notebook}[/] / {note.title}"
+                if record.status == MigrationStatus.SKIPPED:
+                    console.print(f"{label} - skipped")
+                else:
+                    console.print(label)
+        else:
+            with Progress(
+                TextColumn("[progress.description]{task.description}", table_column=Column(width=55, no_wrap=True)),
+                BarColumn(),
+                MofNCompleteColumn(),
+                TimeElapsedColumn(),
+                console=console,
+            ) as progress:
+                task = progress.add_task("Migrating notes", total=len(notes))
+
+                for note in notes:
+                    progress.update(task, description=f"[cyan]{note.notebook}[/] / {note.title[:40]}")
+                    record = _migrate_note(note=note, options=options, drive=drive, docs=docs, folder_cache=folder_cache)
+                    records.append(record)
+                    progress.advance(task)
+    finally:
+        if null_tmp is not None:
+            shutil.rmtree(null_tmp, ignore_errors=True)
 
     if options.log_file:
         _write_log(records, options.log_file)
@@ -142,7 +155,7 @@ def _dry_run(notes: list[Note], options: MigrationOptions, drive) -> None:
     """Create only the migration root folder in Drive to validate auth/access."""
     from .drive import get_or_create_folder_path
     root_id = get_or_create_folder_path(drive, options.dest)
-    console.print(f"  [green]Created root folder:[/] {options.dest} (id: {root_id})")
+    console.print(f"  [green]Created root folder:[/] '{options.dest}' (id: {root_id})")
     console.print("\n[green]Dry run complete.[/]")
 
 
@@ -156,32 +169,7 @@ def _migrate_note(note: Note, options: MigrationOptions, drive, docs, folder_cac
         if options.output_mode == OutputMode.GOOGLE:
             return _migrate_note_gdrive(note, classified, kind_label, options, drive, docs, folder_cache)
         else:
-            from .local_writer import write_note, note_folder
-            from .classifier import _safe_name
-            if options.skip_existing:
-                folder = note_folder(Path(options.dest), note)
-                safe_title = _safe_name(note.title)
-                if any(folder.glob(f"{safe_title}.*")) or any(folder.glob(f"{safe_title}_0.*")):
-                    return MigrationRecord(
-                        notebook=note.notebook, title=note.title, kind=kind_label,
-                        status=MigrationStatus.SKIPPED, output=[],
-                    )
-            if options.dest == "null":
-                import shutil, tempfile
-                tmp = Path(tempfile.mkdtemp())
-                try:
-                    write_note(classified, tmp, options.multi_attachment.value)
-                finally:
-                    shutil.rmtree(tmp, ignore_errors=True)
-                return MigrationRecord(
-                    notebook=note.notebook, title=note.title, kind=kind_label,
-                    status=MigrationStatus.SUCCESS, output=[],
-                )
-            paths = write_note(classified, Path(options.dest), options.multi_attachment.value)
-            return MigrationRecord(
-                notebook=note.notebook, title=note.title, kind=kind_label,
-                status=MigrationStatus.SUCCESS, output=[str(p) for p in paths],
-            )
+            return _migrate_note_local(note, classified, kind_label, options)
 
     except Exception as exc:
         _eprint(f"Error: {note.title!r}: {exc} ({type(exc).__name__})")
@@ -191,8 +179,28 @@ def _migrate_note(note: Note, options: MigrationOptions, drive, docs, folder_cac
         )
 
 
+def _migrate_note_local(note, classified, kind_label, options) -> MigrationRecord:
+    from .local_writer import write_note, note_folder
+    from .classifier import _safe_name
+
+    if options.skip_existing:
+        folder = note_folder(Path(options.dest), note)
+        safe_title = _safe_name(note.title)
+        if any(folder.glob(f"{safe_title}.*")) or any(folder.glob(f"{safe_title}_0.*")):
+            return MigrationRecord(
+                notebook=note.notebook, title=note.title, kind=kind_label,
+                status=MigrationStatus.SKIPPED, output=[],
+            )
+
+    paths = write_note(classified, Path(options.dest), options.multi_attachment.value)
+    return MigrationRecord(
+        notebook=note.notebook, title=note.title, kind=kind_label,
+        status=MigrationStatus.SUCCESS, output=[str(p) for p in paths],
+    )
+
+
 def _migrate_note_gdrive(note, classified, kind_label, options, drive, docs, folder_cache) -> MigrationRecord:
-    from .classifier import _EMBEDDABLE_IMAGE_MIME
+    from .classifier import _EMBEDDABLE_IMAGE_MIME, _safe_name
     from .docs import create_doc
     from .drive import ensure_folder_path, file_exists, make_description, upload_file
 
@@ -204,8 +212,10 @@ def _migrate_note_gdrive(note, classified, kind_label, options, drive, docs, fol
     _, notebook_id = folder_cache[cache_key]
 
     description = make_description(note.created, note.source_url)
+    safe_title = _safe_name(note.title)
+    attachments = classified.attachments
 
-    if options.skip_existing and file_exists(drive, note.title, notebook_id):
+    if options.skip_existing and file_exists(drive, safe_title, notebook_id):
         return MigrationRecord(
             notebook=note.notebook, title=note.title, kind=kind_label,
             status=MigrationStatus.SKIPPED, output=[],
@@ -216,15 +226,15 @@ def _migrate_note_gdrive(note, classified, kind_label, options, drive, docs, fol
     modified_time = note.updated or note.created
 
     if kind == NoteKind.TEXT_ONLY:
-        file_id = create_doc(drive, docs, title=note.title, plain_text=plain_text,
+        file_id = create_doc(drive, docs, title=safe_title, plain_text=plain_text,
                              note=note, attachments=[], parent_id=notebook_id, description=description,
                              modified_time=modified_time)
         return MigrationRecord(notebook=note.notebook, title=note.title, kind=kind_label,
                                status=MigrationStatus.SUCCESS, output=[file_id])
 
     elif kind == NoteKind.ATTACHMENT_ONLY_SINGLE:
-        att = note.attachments[0]
-        file_id = upload_file(drive, name=note.title, data=att.data, mime_type=att.mime,
+        att = attachments[0]
+        file_id = upload_file(drive, name=safe_title, data=att.data, mime_type=att.mime,
                               parent_id=notebook_id, description=description,
                               modified_time=modified_time)
         return MigrationRecord(notebook=note.notebook, title=note.title, kind=kind_label,
@@ -233,7 +243,7 @@ def _migrate_note_gdrive(note, classified, kind_label, options, drive, docs, fol
     elif kind == NoteKind.ATTACHMENT_ONLY_MULTI:
         if options.multi_attachment == MultiAttachmentPolicy.FILES:
             ids = []
-            for i, att in enumerate(note.attachments, start=1):
+            for i, att in enumerate(attachments, start=1):
                 fname = attachment_drive_filename(note.title, i, att)
                 ids.append(upload_file(drive, name=fname, data=att.data, mime_type=att.mime,
                                        parent_id=notebook_id, description=description,
@@ -241,19 +251,19 @@ def _migrate_note_gdrive(note, classified, kind_label, options, drive, docs, fol
             return MigrationRecord(notebook=note.notebook, title=note.title, kind=kind_label,
                                    status=MigrationStatus.SUCCESS, output=ids)
         else:
-            has_siblings = any(att.mime not in _EMBEDDABLE_IMAGE_MIME for att in note.attachments)
-            doc_title = f"{note.title}_0" if has_siblings else note.title
+            has_siblings = any(att.mime not in _EMBEDDABLE_IMAGE_MIME for att in attachments)
+            doc_title = f"{safe_title}_0" if has_siblings else safe_title
             file_id = create_doc(drive, docs, title=doc_title, plain_text="",
-                                 note=note, attachments=note.attachments, parent_id=notebook_id,
+                                 note=note, attachments=attachments, parent_id=notebook_id,
                                  description=description, modified_time=modified_time)
             return MigrationRecord(notebook=note.notebook, title=note.title, kind=kind_label,
                                    status=MigrationStatus.SUCCESS, output=[file_id])
 
     elif kind == NoteKind.TEXT_WITH_ATTACHMENTS:
-        has_siblings = any(att.mime not in _EMBEDDABLE_IMAGE_MIME for att in note.attachments)
-        doc_title = f"{note.title}_0" if has_siblings else note.title
+        has_siblings = any(att.mime not in _EMBEDDABLE_IMAGE_MIME for att in attachments)
+        doc_title = f"{safe_title}_0" if has_siblings else safe_title
         file_id = create_doc(drive, docs, title=doc_title, plain_text=plain_text,
-                             note=note, attachments=note.attachments, parent_id=notebook_id,
+                             note=note, attachments=attachments, parent_id=notebook_id,
                              description=description, modified_time=modified_time)
         return MigrationRecord(notebook=note.notebook, title=note.title, kind=kind_label,
                                status=MigrationStatus.SUCCESS, output=[file_id])

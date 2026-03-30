@@ -24,6 +24,11 @@ class ClassifiedNote:
     note: Note
     kind: NoteKind
     plain_text: str  # stripped body text (may be empty)
+    attachments: list[Attachment] = None  # note.attachments minus unnamed octet-stream blobs
+
+    def __post_init__(self):
+        if self.attachments is None:
+            self.attachments = self.note.attachments
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -54,7 +59,16 @@ def has_meaningful_text(plain_text: str) -> bool:
 def classify(note: Note) -> ClassifiedNote:
     plain_text = enml_to_text(note.enml)
     has_text = has_meaningful_text(plain_text)
-    n_attachments = len(note.attachments)
+
+    # Strip unnamed application/octet-stream attachments — these are raw HTML
+    # sources saved internally by the Evernote web clipper and are already
+    # represented by the note's ENML body.
+    attachments = [
+        att for att in note.attachments
+        if not (att.mime == "application/octet-stream" and not att.filename)
+    ]
+
+    n_attachments = len(attachments)
 
     if has_text and n_attachments == 0:
         kind = NoteKind.TEXT_ONLY
@@ -66,7 +80,7 @@ def classify(note: Note) -> ClassifiedNote:
         # no text, 0 attachments → treat as empty text-only doc; also covers multi
         kind = NoteKind.ATTACHMENT_ONLY_MULTI if n_attachments >= 2 else NoteKind.TEXT_ONLY
 
-    return ClassifiedNote(note=note, kind=kind, plain_text=plain_text)
+    return ClassifiedNote(note=note, kind=kind, plain_text=plain_text, attachments=attachments)
 
 
 def attachment_drive_filename(note_title: str, index: int, attachment: Attachment) -> str:

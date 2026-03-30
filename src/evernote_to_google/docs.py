@@ -23,6 +23,12 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+try:
+    from PIL import Image as _PIL_Image
+    _HAS_PIL = True
+except ImportError:
+    _HAS_PIL = False
+
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
 
@@ -168,6 +174,36 @@ def _insert_text_requests(text: str) -> list[dict]:
     return [{"insertText": {"location": {"index": 1}, "text": text}}]
 
 
+_MAX_IMG_W_PT = 400  # max image width in PT (~5.5" at 72 PT/in)
+_MAX_IMG_H_PT = 560  # max image height in PT (~7.8" at 72 PT/in)
+_DEFAULT_IMG_PT = 400  # fallback size when dimensions can't be read
+
+
+def _image_size_pt(data: bytes) -> tuple[float, float]:
+    """
+    Return (width_pt, height_pt) scaled to fit within max bounds, preserving
+    aspect ratio. Falls back to (_DEFAULT_IMG_PT, _DEFAULT_IMG_PT) if the
+    dimensions cannot be determined.
+    """
+    w_px = h_px = None
+    if _HAS_PIL:
+        try:
+            with _PIL_Image.open(io.BytesIO(data)) as img:
+                w_px, h_px = img.size
+        except Exception:
+            pass
+
+    if not w_px or not h_px:
+        return _DEFAULT_IMG_PT, _DEFAULT_IMG_PT
+
+    # Convert pixels to PT (assuming 96 DPI screen: 1px = 72/96 PT)
+    w_pt = w_px * 72 / 96
+    h_pt = h_px * 72 / 96
+
+    scale = min(_MAX_IMG_W_PT / w_pt, _MAX_IMG_H_PT / h_pt, 1.0)
+    return w_pt * scale, h_pt * scale
+
+
 def _insert_image_requests(att: Attachment) -> list[dict]:
     # The Docs API requires a publicly accessible URI for insertInlineImage.
     # We use a data URI as a workaround — note: this only works for small images
@@ -176,14 +212,15 @@ def _insert_image_requests(att: Attachment) -> list[dict]:
     # using that URL would be more reliable.
     b64 = base64.b64encode(att.data).decode()
     uri = f"data:{att.mime};base64,{b64}"
+    w_pt, h_pt = _image_size_pt(att.data)
     return [
         {
             "insertInlineImage": {
                 "location": {"index": 1},
                 "uri": uri,
                 "objectSize": {
-                    "width": {"magnitude": 400, "unit": "PT"},
-                    "height": {"magnitude": 400, "unit": "PT"},
+                    "width": {"magnitude": w_pt, "unit": "PT"},
+                    "height": {"magnitude": h_pt, "unit": "PT"},
                 },
             }
         }
