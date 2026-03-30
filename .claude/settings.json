@@ -1,7 +1,6 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:*)",
       "Bash(python3:*)",
       "Bash(pip install:*)",
       "Bash(evernote-to-gdrive migrate:*)",
