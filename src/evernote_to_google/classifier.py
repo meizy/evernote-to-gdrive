@@ -76,7 +76,7 @@ def attachment_drive_filename(note_title: str, index: int, attachment: Attachmen
     Index is 1-based.
     """
     ext = _ext_for_mime(attachment.mime)
-    safe_title = _safe_filename(note_title)
+    safe_title = _safe_name(note_title)
     return f"{safe_title}_{index}{ext}"
 
 
@@ -91,9 +91,32 @@ def _ext_for_mime(mime: str) -> str:
     return mapping.get(mime.lower(), "")
 
 
-def _safe_filename(name: str, max_length: int = 200) -> str:
+def _safe_name(name: str, max_length: int = 200) -> str:
     """Strip characters that are problematic in Drive filenames."""
     # Drive allows most characters, but avoid / \ : * ? " < > |
     for ch in r'/\:*?"<>|':
         name = name.replace(ch, "_")
     return name.strip()[:max_length]
+
+
+# Unicode ranges that indicate RTL scripts (Hebrew, Arabic, etc.)
+_RTL_RANGES = [
+    (0x0590, 0x05FF),  # Hebrew
+    (0x0600, 0x06FF),  # Arabic
+    (0x0750, 0x077F),  # Arabic Supplement
+    (0xFB1D, 0xFDFF),  # Hebrew/Arabic Presentation Forms
+    (0xFE70, 0xFEFF),  # Arabic Presentation Forms-B
+]
+
+
+def _is_rtl(text: str) -> bool:
+    """Return True if the text contains RTL characters (Hebrew, Arabic, etc.)."""
+    for ch in text:
+        cp = ord(ch)
+        if any(lo <= cp <= hi for lo, hi in _RTL_RANGES):
+            return True
+    return False
+
+
+# Supported MIME types for inline image embedding
+_EMBEDDABLE_IMAGE_MIME = {"image/jpeg", "image/png", "image/gif"}

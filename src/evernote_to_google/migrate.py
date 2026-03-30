@@ -138,9 +138,10 @@ def _migrate_note(note: Note, options: MigrationOptions, drive, docs, folder_cac
 
     try:
         if options.output_mode == OutputMode.GOOGLE:
-            return _migrate_note_api(note, classified, kind_label, options, drive, docs, folder_cache)
+            return _migrate_note_gdrive(note, classified, kind_label, options, drive, docs, folder_cache)
         else:
-            from .local_writer import write_note, note_folder, _safe_name
+            from .local_writer import write_note, note_folder
+            from .classifier import _safe_name
             if options.skip_existing:
                 folder = note_folder(Path(options.dest), note)
                 safe_title = _safe_name(note.title)
@@ -163,8 +164,9 @@ def _migrate_note(note: Note, options: MigrationOptions, drive, docs, folder_cac
         )
 
 
-def _migrate_note_api(note, classified, kind_label, options, drive, docs, folder_cache) -> MigrationRecord:
-    from .docs import create_attachment_index_doc, create_doc
+def _migrate_note_gdrive(note, classified, kind_label, options, drive, docs, folder_cache) -> MigrationRecord:
+    from .classifier import _EMBEDDABLE_IMAGE_MIME
+    from .docs import create_doc
     from .drive import ensure_folder_path, file_exists, make_description, upload_file
 
     cache_key = f"{note.stack or ''}/{note.notebook}"
@@ -212,18 +214,16 @@ def _migrate_note_api(note, classified, kind_label, options, drive, docs, folder
             return MigrationRecord(notebook=note.notebook, title=note.title, kind=kind_label,
                                    status=MigrationStatus.SUCCESS, output=ids)
         else:
-            _embeddable = {"image/jpeg", "image/png", "image/gif"}
-            has_siblings = any(att.mime not in _embeddable for att in note.attachments)
+            has_siblings = any(att.mime not in _EMBEDDABLE_IMAGE_MIME for att in note.attachments)
             doc_title = f"{note.title}_0" if has_siblings else note.title
-            file_id = create_attachment_index_doc(drive, docs, title=doc_title, note=note,
-                                                  attachments=note.attachments, parent_id=notebook_id,
-                                                  description=description, modified_time=modified_time)
+            file_id = create_doc(drive, docs, title=doc_title, plain_text="",
+                                 note=note, attachments=note.attachments, parent_id=notebook_id,
+                                 description=description, modified_time=modified_time)
             return MigrationRecord(notebook=note.notebook, title=note.title, kind=kind_label,
                                    status=MigrationStatus.SUCCESS, output=[file_id])
 
     elif kind == NoteKind.TEXT_WITH_ATTACHMENTS:
-        _embeddable = {"image/jpeg", "image/png", "image/gif"}
-        has_siblings = any(att.mime not in _embeddable for att in note.attachments)
+        has_siblings = any(att.mime not in _EMBEDDABLE_IMAGE_MIME for att in note.attachments)
         doc_title = f"{note.title}_0" if has_siblings else note.title
         file_id = create_doc(drive, docs, title=doc_title, plain_text=plain_text,
                              note=note, attachments=note.attachments, parent_id=notebook_id,

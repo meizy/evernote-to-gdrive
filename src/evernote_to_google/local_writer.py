@@ -59,28 +59,11 @@ def _silent_unit_converter(unit_value: str, target_unit: str = "pt"):
 
 _h4d_utils.unit_converter = _silent_unit_converter
 
-from .classifier import NoteKind, attachment_drive_filename, ClassifiedNote
+from .classifier import (
+    NoteKind, attachment_drive_filename, ClassifiedNote,
+    _EMBEDDABLE_IMAGE_MIME, _is_rtl, _safe_name, _ext_for_mime,
+)
 from .parser import Attachment, Note
-
-# Unicode ranges that indicate RTL scripts
-_RTL_RANGES = [
-    (0x0590, 0x05FF),
-    (0x0600, 0x06FF),
-    (0x0750, 0x077F),
-    (0xFB1D, 0xFDFF),
-    (0xFE70, 0xFEFF),
-]
-
-_EMBEDDABLE_IMAGE_MIME = {"image/jpeg", "image/png", "image/gif"}
-_IMAGE_EXT = {"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif"}
-
-
-def _is_rtl(text: str) -> bool:
-    for ch in text:
-        cp = ord(ch)
-        if any(lo <= cp <= hi for lo, hi in _RTL_RANGES):
-            return True
-    return False
 
 
 def _set_para_rtl(paragraph) -> None:
@@ -214,12 +197,6 @@ def note_folder(output_dir: Path, note: Note) -> Path:
     folder = Path(*parts)
     folder.mkdir(parents=True, exist_ok=True)
     return folder
-
-
-def _safe_name(name: str, max_length: int = 200) -> str:
-    for ch in r'/\:*?"<>|':
-        name = name.replace(ch, "_")
-    return name.strip()[:max_length]
 
 
 def _unique_path(path: Path) -> Path:
@@ -395,7 +372,7 @@ def write_note(
 
     if classified.kind == NoteKind.ATTACHMENT_ONLY_SINGLE:
         att = note.attachments[0]
-        ext = _IMAGE_EXT.get(att.mime, _ext_for_mime(att.mime))
+        ext = _ext_for_mime(att.mime)
         dest = _unique_path(folder / f"{safe_title}{ext}")
         dest.write_bytes(att.data)
         _set_timestamps(dest, note.created, note.updated)
@@ -438,11 +415,3 @@ def write_note(
         return [dest]
 
     raise ValueError(f"Unhandled note kind: {classified.kind}")
-
-
-def _ext_for_mime(mime: str) -> str:
-    mapping = {
-        "application/pdf": ".pdf",
-        "image/webp": ".webp",
-    }
-    return mapping.get(mime.lower(), "")

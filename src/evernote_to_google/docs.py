@@ -26,30 +26,9 @@ from typing import Any
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
 
-from .classifier import attachment_drive_filename
+from .classifier import attachment_drive_filename, _EMBEDDABLE_IMAGE_MIME, _is_rtl
 from .drive import drive_url, upload_file, _retry
 from .parser import Attachment, Note
-
-# Supported MIME types for inline image embedding
-_EMBEDDABLE_IMAGE_MIME = {"image/jpeg", "image/png", "image/gif"}
-
-# Unicode ranges that indicate RTL scripts (Hebrew, Arabic, etc.)
-_RTL_RANGES = [
-    (0x0590, 0x05FF),  # Hebrew
-    (0x0600, 0x06FF),  # Arabic
-    (0x0750, 0x077F),  # Arabic Supplement
-    (0xFB1D, 0xFDFF),  # Hebrew/Arabic Presentation Forms
-    (0xFE70, 0xFEFF),  # Arabic Presentation Forms-B
-]
-
-
-def _is_rtl(text: str) -> bool:
-    """Return True if the text contains RTL characters (Hebrew, Arabic, etc.)."""
-    for ch in text:
-        cp = ord(ch)
-        if any(lo <= cp <= hi for lo, hi in _RTL_RANGES):
-            return True
-    return False
 
 
 @dataclass
@@ -124,34 +103,6 @@ def create_doc(
         _apply_rtl(docs, doc_id)
 
     return doc_id
-
-
-def create_attachment_index_doc(
-    drive,
-    docs,
-    *,
-    title: str,
-    note: Note,
-    attachments: list[Attachment],
-    parent_id: str,
-    description: str | None = None,
-    modified_time=None,
-) -> str:
-    """
-    Create a Google Doc that only lists attachment links (for multi-attachment,
-    no-text notes when --multi-attachment=doc).
-    """
-    return create_doc(
-        drive=drive,
-        docs=docs,
-        title=title,
-        plain_text="",
-        note=note,
-        attachments=attachments,
-        parent_id=parent_id,
-        description=description,
-        modified_time=modified_time,
-    )
 
 
 # ── internals ─────────────────────────────────────────────────────────────────
