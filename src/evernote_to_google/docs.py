@@ -5,6 +5,8 @@ Strategy:
   1. Create an empty Google Doc via the Drive API (gives us a file ID).
   2. Use the Docs API batchUpdate to insert text and inline images.
   3. PDFs are uploaded as separate Drive files and their links appended to the doc.
+  4. After all batchUpdate calls, restore modifiedTime via files().update().
+     (batchUpdate resets modifiedTime to the current wall-clock time.)
 
 Insertion order matters: the Docs API uses character indices. We build a list
 of "segments" (text or image) in document order, then insert them in reverse
@@ -30,7 +32,6 @@ except ImportError:
     _HAS_PIL = False
 
 from googleapiclient.errors import HttpError
-from googleapiclient.http import MediaIoBaseUpload
 
 from .classifier import attachment_drive_filename, _EMBEDDABLE_IMAGE_MIME, _is_rtl
 from .drive import drive_url, upload_file, _retry
@@ -73,7 +74,6 @@ def create_doc(
     Embeds JPEG/PNG/GIF attachments inline; uploads PDFs to Drive and inserts links.
     Returns the Doc file ID.
     """
-    # Step 1: create empty doc via Drive (so we can set the parent folder)
     metadata: dict[str, Any] = {
         "name": title,
         "mimeType": "application/vnd.google-apps.document",
@@ -87,7 +87,6 @@ def create_doc(
     file = _retry(drive.files().create(body=metadata, fields="id").execute)
     doc_id = file["id"]
 
-    # Step 2: build update requests
     requests = _build_requests(
         drive=drive,
         docs=docs,
@@ -103,13 +102,22 @@ def create_doc(
     if requests:
         _retry(docs.documents().batchUpdate(documentId=doc_id, body={"requests": requests}).execute)
 
-    # Apply RTL direction if the title or body contains RTL characters.
-    # Must be done after content insertion so we know the document's end index.
     if _is_rtl(title) or _is_rtl(plain_text):
         _apply_rtl(docs, doc_id)
 
-    return doc_id
+    # batchUpdate (and _apply_rtl) reset modifiedTime — patch it back (best-effort).
+    if modified_time:
+        _retry(
+            drive.files()
+            .update(
+                fileId=doc_id,
+                body={"modifiedTime": modified_time.strftime("%Y-%m-%dT%H:%M:%S.000Z")},
+                fields="id",
+            )
+            .execute
+        )
 
+    return doc_id
 
 # ── internals ─────────────────────────────────────────────────────────────────
 
