@@ -420,13 +420,15 @@ def _build_doc(
 
     # Non-image attachments (PDFs etc.) → sibling files + hyperlink in doc
     # Images are already embedded inline via <img> tags in the HTML above.
-    for i, att in enumerate(attachments, start=1):
+    sibling_index = 1
+    for att in attachments:
         if att.mime not in _EMBEDDABLE_IMAGE_MIME:
-            filename = attachment_drive_filename(title, i, att)
+            filename = attachment_drive_filename(title, sibling_index, att)
             sibling = _unique_path(folder / filename)
             sibling.write_bytes(att.data)
             _set_timestamps(sibling, note.created, note.updated)
             _add_file_hyperlink(doc, f"[Attachment: {sibling.name}]", sibling.name)
+            sibling_index += 1
 
     return doc
 
@@ -445,8 +447,16 @@ def write_note(
     folder = note_folder(output_dir, note)
     safe_title = _safe_name(note.title)
 
+    # Drop unnamed application/octet-stream attachments — these are raw HTML
+    # sources saved internally by the Evernote web clipper and are already
+    # represented by the note's ENML body.
+    attachments = [
+        att for att in note.attachments
+        if not (att.mime == "application/octet-stream" and not att.filename)
+    ]
+
     if classified.kind == NoteKind.ATTACHMENT_ONLY_SINGLE:
-        att = note.attachments[0]
+        att = attachments[0]
         ext = _ext_for_mime(att.mime)
         dest = _unique_path(folder / f"{safe_title}{ext}")
         dest.write_bytes(att.data)
@@ -456,7 +466,7 @@ def write_note(
     elif classified.kind == NoteKind.ATTACHMENT_ONLY_MULTI:
         if multi_attachment == "files":
             paths = []
-            for i, att in enumerate(note.attachments, start=1):
+            for i, att in enumerate(attachments, start=1):
                 filename = attachment_drive_filename(safe_title, i, att)
                 dest = _unique_path(folder / filename)
                 dest.write_bytes(att.data)
@@ -464,8 +474,8 @@ def write_note(
                 paths.append(dest)
             return paths
         else:  # doc
-            doc = _build_doc(note.title, note, note.attachments, folder)
-            has_siblings = any(att.mime not in _EMBEDDABLE_IMAGE_MIME for att in note.attachments)
+            doc = _build_doc(note.title, note, attachments, folder)
+            has_siblings = any(att.mime not in _EMBEDDABLE_IMAGE_MIME for att in attachments)
             docx_name = f"{safe_title}_0.docx" if has_siblings else f"{safe_title}.docx"
             dest = _unique_path(folder / docx_name)
             doc.save(str(dest))
@@ -481,8 +491,8 @@ def write_note(
         return [dest]
 
     elif classified.kind == NoteKind.TEXT_WITH_ATTACHMENTS:
-        doc = _build_doc(note.title, note, note.attachments, folder)
-        has_siblings = any(att.mime not in _EMBEDDABLE_IMAGE_MIME for att in note.attachments)
+        doc = _build_doc(note.title, note, attachments, folder)
+        has_siblings = any(att.mime not in _EMBEDDABLE_IMAGE_MIME for att in attachments)
         docx_name = f"{safe_title}_0.docx" if has_siblings else f"{safe_title}.docx"
         dest = _unique_path(folder / docx_name)
         doc.save(str(dest))

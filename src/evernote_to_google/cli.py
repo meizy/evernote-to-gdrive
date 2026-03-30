@@ -49,9 +49,8 @@ def analyze(input: Path, output_json: Path | None, mime: str | None):
               type=click.Choice(["gdrive", "local"], case_sensitive=False),
               default="gdrive", show_default=True,
               help="gdrive: upload to Google Drive. local: save to a local folder.")
-@click.option("--dest", default=None,
-              help="Output destination: Drive folder path (gdrive, supports a/b/c) or local folder (local). "
-                   "default: 'Evernote Migration' (gdrive), 'evernote-export' (local).")
+@click.option("--dest", default="Evernote Migration", show_default=True,
+              help="Output destination: Drive folder path (gdrive, supports a/b/c) or local folder (local).")
 @click.option("--dry-run", is_flag=True, default=False,
               help="Authenticate and create root Drive folder only (gdrive mode only).")
 @click.option("--stack", "stacks", multiple=True,
@@ -72,7 +71,7 @@ def analyze(input: Path, output_json: Path | None, mime: str | None):
 def migrate(
     input: Path,
     output_mode: str,
-    dest: str | None,
+    dest: str,
     dry_run: bool,
     stacks: tuple[str, ...],
     notebooks: tuple[str, ...],
@@ -84,8 +83,6 @@ def migrate(
     """Migrate Evernote notes to Google Drive (gdrive) or a local folder (local)."""
     mode = OutputMode(output_mode.lower())
 
-    if dest is None:
-        dest = "Evernote Migration"
 
     options = MigrationOptions(
         output_mode=mode,
