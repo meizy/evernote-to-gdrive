@@ -16,7 +16,14 @@
       "Bash(for sha:*)",
       "Bash(do echo:*)",
       "Skill(update-config)",
-      "Skill(update-config:*)"
+      "Skill(update-config:*)",
+      "Bash(python -c \":*)",
+      "Bash(source .venv/bin/activate)",
+      "Bash(pip show:*)",
+      "Bash(python -c \"import html4docx.utils as u; import inspect; print\\(inspect.getsource\\(u.unit_converter\\)\\)\")",
+      "Bash(python -c \"import html4docx.h4d as h; import inspect; print\\(inspect.getsource\\(h.HtmlToDocx.add_styles_to_table_cell\\)\\)\")",
+      "Bash(grep -r \"beautifulsoup\\\\|bs4\\\\|lxml\" /Users/moshe/Dev/evernote-to-gdrive/pyproject.toml /Users/moshe/Dev/evernote-to-gdrive/requirements*.txt)",
+      "Bash(xargs -I{} sh -c \"iconv -f utf-8 -t utf-8 \"\"{}\"\" 2>/dev/null | grep -l \"\"הפסגה\"\" && echo \"\"{}\"\"\")"
     ]
   }
 }

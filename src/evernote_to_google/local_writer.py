@@ -41,23 +41,45 @@ logging.getLogger('root').setLevel(logging.ERROR)
 def _silent_unit_converter(unit_value: str, target_unit: str = "pt"):
     import re
     unit_value = unit_value.strip().lower()
-    value = float(re.sub(r"[^0-9.]", "", unit_value) or 0)
+    value = float(re.sub(r"[^0-9.]", "", unit_value) or 0)  # changed: `or 0` avoids ValueError on empty input
     unit = re.sub(r"[0-9.]", "", unit_value)
     from docx.shared import Pt, Cm, Inches, Mm
     from html4docx import constants
     conversion_to_pt = {
-        "px": value * 0.75, "pt": value, "in": value * 72.0,
-        "pc": value * 12.0, "cm": value * 28.3465, "mm": value * 2.83465,
-        "em": value * 12.0, "rem": value * 12.0, "%": value,
+        "px": value * 0.75,    # 1px = 0.75pt (assuming 96dpi)
+        "pt": value * 1.0,     # 1pt = 1pt
+        "in": value * 72.0,    # 1in = 72pt
+        "pc": value * 12.0,    # 1pc = 12pt
+        "cm": value * 28.3465, # 1cm = 28.3465pt
+        "mm": value * 2.83465, # 1mm = 2.83465pt
+        "em": value * 12.0,    # 1em = 12pt (assuming 1em = 16px)
+        "rem": value * 12.0,   # 1rem = 12pt (assuming 1rem = 16px)
+        "%": value,            # Percentage is context-dependent; return as-is
     }
     if unit not in conversion_to_pt:
         return None  # silently return None instead of printing
     value_in_pt = min(conversion_to_pt[unit], constants.MAX_INDENT * 72.0)
     return {"pt": Pt(value_in_pt), "px": round(value_in_pt / 0.75, 2),
             "in": Inches(value_in_pt / 72.0), "cm": Cm(value_in_pt / 28.3465),
-            "mm": Mm(value_in_pt / 2.83465)}.get(target_unit)
+            "mm": Mm(value_in_pt / 2.83465)}.get(target_unit)  # changed: .get() returns None instead of raising ValueError
 
 _h4d_utils.unit_converter = _silent_unit_converter
+
+# html4docx bug: add_styles_to_table_cell passes parse_color()'s raw list
+# directly to run.font.color.rgb, which requires an RGBColor object.
+import html4docx.h4d as _h4d
+_orig_add_styles_to_table_cell = _h4d.HtmlToDocx.add_styles_to_table_cell
+def _patched_add_styles_to_table_cell(self, styles, doc_cell, cell_row):
+    if 'color' in styles:
+        from html4docx import utils as _u
+        color = _u.parse_color(styles['color'])
+        if color and isinstance(color, list):
+            # changed: convert list → hex string before passing to original,
+            # because run.font.color.rgb requires RGBColor, not a raw list
+            styles = dict(styles)
+            styles['color'] = _u.rgb_to_hex(color)
+    _orig_add_styles_to_table_cell(self, styles, doc_cell, cell_row)
+_h4d.HtmlToDocx.add_styles_to_table_cell = _patched_add_styles_to_table_cell
 
 from .classifier import (
     NoteKind, attachment_drive_filename, ClassifiedNote,
@@ -219,6 +241,47 @@ def _attachment_hash_map(attachments: list[Attachment]) -> dict[str, Attachment]
     return {hashlib.md5(att.data).hexdigest(): att for att in attachments}
 
 
+def _strip_navigation_elements(html: str) -> str:
+    """Remove site-chrome elements captured by the Evernote web clipper.
+
+    The web clipper sometimes captures the full page including navigation
+    menus, headers, and footers. Strip semantic tags (<nav>, <header>,
+    <footer>) and any block with role="navigation" or role="banner".
+    Uses lxml for robustness; falls back to regex on parse failure.
+    """
+    try:
+        from lxml import etree
+        import lxml.html as lxmlhtml
+        root = lxmlhtml.fragment_fromstring(html, create_parent='div')
+        _NAV_ROLES = {'navigation', 'banner', 'contentinfo'}
+        for el in root.iter():
+            tag = el.tag if isinstance(el.tag, str) else ''
+            role = (el.get('role') or '').strip().lower()
+            if tag.lower() in ('nav', 'header', 'footer') or role in _NAV_ROLES:
+                parent = el.getparent()
+                if parent is not None:
+                    # Preserve tail text (content after the closing tag)
+                    if el.tail:
+                        prev = el.getprevious()
+                        if prev is not None:
+                            prev.tail = (prev.tail or '') + el.tail
+                        else:
+                            parent.text = (parent.text or '') + el.tail
+                    parent.remove(el)
+        # Serialize children of the wrapper div, not the div itself
+        parts = []
+        if root.text:
+            parts.append(root.text)
+        for child in root:
+            parts.append(etree.tostring(child, encoding='unicode', method='html'))
+        return ''.join(parts)
+    except Exception:
+        # Regex fallback: remove whole blocks for known tags
+        for tag in ('nav', 'header', 'footer'):
+            html = re.sub(rf'<{tag}\b[^>]*>.*?</{tag}>', '', html, flags=re.DOTALL | re.IGNORECASE)
+        return html
+
+
 def _sanitize_enml(enml: str, hash_map: dict[str, Attachment]) -> str:
     """Convert ENML to clean HTML for html4docx.
 
@@ -256,6 +319,10 @@ def _sanitize_enml(enml: str, hash_map: dict[str, Attachment]) -> str:
     html = re.sub(r'<en-todo\b[^>]*/>', '[\u00a0]\u00a0', html)
     # Strip the ENML root tag (unknown tags confuse html4docx)
     html = re.sub(r'</?en-note\b[^>]*>', '', html)
+    # Strip site-chrome elements (nav menus, headers, footers) left behind by
+    # the Evernote web clipper when it captures the full page instead of just
+    # the article body.
+    html = _strip_navigation_elements(html)
     return html.strip()
 
 
@@ -342,6 +409,14 @@ def _build_doc(
                 sz.addnext(szcs)
             else:
                 szcs.set(qn('w:val'), sz.get(qn('w:val')))
+
+    # Strip trailing blank (no text, no image) paragraphs before attachment links
+    while doc.paragraphs:
+        last = doc.paragraphs[-1]
+        has_image = any(r._r.find('.//' + qn('a:graphicData')) is not None for r in last.runs)
+        if last.text.strip() or has_image:
+            break
+        last._element.getparent().remove(last._element)
 
     # Non-image attachments (PDFs etc.) → sibling files + hyperlink in doc
     # Images are already embedded inline via <img> tags in the HTML above.

@@ -111,26 +111,26 @@ def print_report(result: AnalysisResult) -> None:
     cls_table = Table(title="Note Classification", show_lines=False)
     cls_table.add_column("Type", style="bold")
     cls_table.add_column("Count", justify="right")
-    cls_table.add_column("Drive output")
+    cls_table.add_column("Output")
     cls_table.add_row(
         "Text only",
         str(result.text_only),
-        "Google Doc",
+        "Document",
     )
     cls_table.add_row(
         "Attachment only (1 file)",
         str(result.attachment_only_single),
-        "Raw file upload",
+        "File",
     )
     cls_table.add_row(
         "Attachment only (multi)",
         str(result.attachment_only_multi),
-        "Google Doc (links) or separate files",
+        "Document (links) + files",
     )
     cls_table.add_row(
         "Text + attachment(s)",
         str(result.text_with_attachments),
-        "Google Doc + file uploads",
+        "Document + files",
     )
     console.print(cls_table)
     console.print()
@@ -183,6 +183,28 @@ def print_report(result: AnalysisResult) -> None:
                 "(will be migrated as plain text with encryption markers)"
             )
         console.print()
+
+
+def list_notes_by_mime(input_path: Path, mime_type: str) -> None:
+    matches: list[tuple[str, str, list[str]]] = []  # (notebook, title, filenames)
+    for note in load_notes(input_path):
+        matched = [att.filename or "<unnamed>" for att in note.attachments if att.mime == mime_type]
+        if matched:
+            matches.append((note.notebook, note.title, matched))
+
+    if not matches:
+        console.print(f"[yellow]No notes found with MIME type: {mime_type}")
+        return
+
+    table = Table(title=f"Notes with attachment type: {mime_type}")
+    table.add_column("Notebook", style="bold")
+    table.add_column("Note title")
+    table.add_column("Matching files")
+    for notebook, title, filenames in sorted(matches):
+        table.add_row(notebook, title, ", ".join(filenames))
+    console.print()
+    console.print(table)
+    console.print(f"\n[dim]{len(matches)} note(s) matched.")
 
 
 def save_json(result: AnalysisResult, path: Path) -> None:

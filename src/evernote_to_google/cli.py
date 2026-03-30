@@ -9,7 +9,7 @@ from pathlib import Path
 import click
 from rich.console import Console
 
-from .analyze import print_report, run_analysis, save_json
+from .analyze import list_notes_by_mime, print_report, run_analysis, save_json
 from .migrate import MigrationOptions, MultiAttachmentPolicy, OutputMode, run_migration
 
 console = Console()
@@ -26,9 +26,14 @@ def main():
 @click.argument("input", type=click.Path(exists=True, path_type=Path))
 @click.option("--output-json", type=click.Path(path_type=Path), default=None,
               help="Also write statistics to a JSON file.")
-def analyze(input: Path, output_json: Path | None):
+@click.option("--mime", default=None, metavar="MIME_TYPE",
+              help="List notes that have an attachment of this MIME type (e.g. application/msword).")
+def analyze(input: Path, output_json: Path | None, mime: str | None):
     """Inspect .enex files and report statistics (no upload)."""
     console.print(f"[dim]Reading: {input}")
+    if mime:
+        list_notes_by_mime(input, mime)
+        return
     result = run_analysis(input)
     print_report(result)
     if output_json:
