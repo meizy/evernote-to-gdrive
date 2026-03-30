@@ -24,7 +24,7 @@ from pathlib import Path
 
 from ._docx_builder import build_doc, add_file_hyperlink
 from .classifier import (
-    NoteKind, attachment_drive_filename, ClassifiedNote,
+    attachment_drive_filename, ClassifiedNote,
     _EMBEDDABLE_IMAGE_MIME, _safe_name, _ext_for_mime,
 )
 from .parser import Attachment, Note
@@ -152,53 +152,29 @@ def _save_doc(doc, path: Path, note: Note) -> Path:
 
 # ── public API ────────────────────────────────────────────────────────────────
 
-def write_note(
-    classified: ClassifiedNote,
-    output_dir: Path,
-    multi_attachment: str,  # "doc" | "files"
-) -> list[Path]:
-    """
-    Write the note to disk. Returns list of paths created.
-    """
-    note = classified.note
-    folder = note_folder(output_dir, note)
-    safe_title = _safe_name(note.title)
-    attachments = classified.attachments
+class LocalWriter:
+    def __init__(self, output_dir: Path) -> None:
+        self._output_dir = output_dir
 
-    if classified.kind == NoteKind.ATTACHMENT_ONLY_SINGLE:
-        att = attachments[0]
-        ext = _ext_for_mime(att.mime)
-        dest = _unique_path(folder / f"{safe_title}{ext}")
-        dest.write_bytes(att.data)
-        _set_timestamps(dest, note.created, note.updated)
-        return [dest]
+    def note_exists(self, note: Note, safe_title: str) -> bool:
+        folder = note_folder(self._output_dir, note)
+        return any(folder.glob(f"{safe_title}.*")) or any(folder.glob(f"{safe_title}_0.*"))
 
-    elif classified.kind == NoteKind.ATTACHMENT_ONLY_MULTI:
-        if multi_attachment == "files":
-            paths = []
-            for i, att in enumerate(attachments, start=1):
-                filename = attachment_drive_filename(safe_title, i, att)
-                dest = _unique_path(folder / filename)
-                dest.write_bytes(att.data)
-                _set_timestamps(dest, note.created, note.updated)
-                paths.append(dest)
-            return paths
-        else:  # doc
-            doc = build_doc(note, attachments)
-            _write_sibling_files(doc, attachments, note.title, folder, note)
-            has_siblings = any(att.mime not in _EMBEDDABLE_IMAGE_MIME for att in attachments)
-            docx_name = f"{safe_title}_0.docx" if has_siblings else f"{safe_title}.docx"
-            return [_save_doc(doc, folder / docx_name, note)]
-
-    elif classified.kind == NoteKind.TEXT_ONLY:
-        doc = build_doc(note, [])
-        return [_save_doc(doc, folder / f"{safe_title}.docx", note)]
-
-    elif classified.kind == NoteKind.TEXT_WITH_ATTACHMENTS:
+    def write_doc(self, title: str, plain_text: str, attachments: list[Attachment], note: Note) -> str:
+        folder = note_folder(self._output_dir, note)
         doc = build_doc(note, attachments)
-        _write_sibling_files(doc, attachments, note.title, folder, note)
-        has_siblings = any(att.mime not in _EMBEDDABLE_IMAGE_MIME for att in attachments)
-        docx_name = f"{safe_title}_0.docx" if has_siblings else f"{safe_title}.docx"
-        return [_save_doc(doc, folder / docx_name, note)]
+        if attachments:
+            _write_sibling_files(doc, attachments, note.title, folder, note)
+        dest = _save_doc(doc, folder / f"{title}.docx", note)
+        return str(dest)
 
-    raise ValueError(f"Unhandled note kind: {classified.kind}")
+    def write_raw_file(self, name: str, data: bytes, mime_type: str, note: Note) -> str:
+        folder = note_folder(self._output_dir, note)
+        ext = _ext_for_mime(mime_type)
+        # attachment_drive_filename already includes the extension; single-attachment name doesn't
+        if ext and not name.endswith(ext):
+            name = f"{name}{ext}"
+        dest = _unique_path(folder / name)
+        dest.write_bytes(data)
+        _set_timestamps(dest, note.created, note.updated)
+        return str(dest)

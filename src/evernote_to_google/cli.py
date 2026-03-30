@@ -106,21 +106,16 @@ def migrate(
         verbose=verbose,
     )
 
-    drive, docs = None, None
     if mode == OutputMode.GOOGLE:
         if dry_run:
             console.print("[yellow]Dry run — only the root Drive folder will be created.")
-        from .auth import get_services
-        console.print("[dim]Authenticating with Google...")
-        drive, docs = get_services()
-        console.print("[green]Authenticated.")
     else:
         if dest == "null":
             console.print("[dim]Null run — output is written to a temp dir and discarded.")
         else:
             console.print(f"[dim]Writing to local folder: '{Path(dest).resolve()}'")
 
-    records = run_migration(input, options, drive, docs)
+    records = run_migration(input, options)
 
     if not records:
         console.print("[yellow]No notes migrated.[/]")
