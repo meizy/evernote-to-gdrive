@@ -207,6 +207,26 @@ def list_notes_by_mime(input_path: Path, mime_type: str) -> None:
     console.print(f"\n[dim]{len(matches)} note(s) matched.")
 
 
+def find_note(input_path: Path, title: str) -> None:
+    matches: list[tuple[str, str | None]] = []  # (notebook, stack)
+    for note in load_notes(input_path):
+        if note.title == title:
+            matches.append((note.notebook, note.stack))
+
+    if not matches:
+        console.print(f"[yellow]No note found with title: {title!r}")
+        return
+
+    table = Table(title=f"Note: {title!r}")
+    table.add_column("Notebook", style="bold")
+    table.add_column("Stack")
+    for notebook, stack in sorted(matches):
+        table.add_row(notebook, stack or "")
+    console.print()
+    console.print(table)
+    console.print(f"\n[dim]{len(matches)} match(es).")
+
+
 def save_json(result: AnalysisResult, path: Path) -> None:
     # Convert defaultdicts to plain dicts for JSON serialization
     data = {

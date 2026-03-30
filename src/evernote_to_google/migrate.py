@@ -5,6 +5,7 @@ Migration orchestration: classify notes and dispatch to Drive/Docs or local fold
 from __future__ import annotations
 
 import csv
+import sys
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -17,6 +18,14 @@ from .classifier import NoteKind, attachment_drive_filename, classify
 from .parser import Note, load_notes
 
 console = Console()
+
+
+def _eprint(*args, **kwargs):
+    # Use stderr directly instead of Rich's console.print for errors and warnings.
+    # Rich is a third-party library whose markup parser can silently swallow brackets
+    # in exception messages (e.g. "[Errno 2]"), and its Progress display can visually
+    # bury output written during a live render. Stderr is always reliable.
+    print(*args, file=sys.stderr, flush=True, **kwargs)
 
 
 class MultiAttachmentPolicy(str, Enum):
@@ -48,11 +57,12 @@ class MigrationRecord:
 @dataclass
 class MigrationOptions:
     output_mode: OutputMode
-    dest: str          # Drive folder path (gdrive) or local output dir (local)
+    dest: str          # Drive folder path (gdrive), local output dir (local), or "null"
     dry_run: bool
     skip_existing: bool
     notebooks: list[str]          # empty = all
     stacks: list[str]             # empty = all
+    note: str | None              # if set, only migrate this one note title
     multi_attachment: MultiAttachmentPolicy
     log_file: Path | None
     verbose: bool = False
@@ -66,9 +76,9 @@ def run_migration(input_path: Path, options: MigrationOptions, drive=None, docs=
         available_stacks = {n.stack for n in notes if n.stack is not None}
         missing = stack_set - available_stacks
         if missing:
-            console.print(f"[red]Error: stack(s) not found: {', '.join(sorted(missing))}[/]")
+            _eprint(f"Error: stack(s) not found: {', '.join(sorted(missing))}")
             if available_stacks:
-                console.print(f"  Available stacks: {', '.join(sorted(available_stacks))}")
+                _eprint(f"  Available stacks: {', '.join(sorted(available_stacks))}")
             return []
         notes = [n for n in notes if n.stack in stack_set]
     if options.notebooks:
@@ -76,11 +86,17 @@ def run_migration(input_path: Path, options: MigrationOptions, drive=None, docs=
         available_notebooks = {n.notebook for n in notes}
         missing = nb_set - available_notebooks
         if missing:
-            console.print(f"[red]Error: notebook(s) not found: {', '.join(sorted(missing))}[/]")
+            _eprint(f"Error: notebook(s) not found: {', '.join(sorted(missing))}")
             if available_notebooks:
-                console.print(f"  Available notebooks: {', '.join(sorted(available_notebooks))}")
+                _eprint(f"  Available notebooks: {', '.join(sorted(available_notebooks))}")
             return []
         notes = [n for n in notes if n.notebook in nb_set]
+
+    if options.note:
+        notes = [n for n in notes if n.title == options.note]
+        if not notes:
+            _eprint(f"Error: note {options.note!r} not found in the selected notebook(s).")
+            return []
 
     if options.dry_run:
         _dry_run(notes, options, drive)
@@ -150,6 +166,17 @@ def _migrate_note(note: Note, options: MigrationOptions, drive, docs, folder_cac
                         notebook=note.notebook, title=note.title, kind=kind_label,
                         status=MigrationStatus.SKIPPED, output=[],
                     )
+            if options.dest == "null":
+                import shutil, tempfile
+                tmp = Path(tempfile.mkdtemp())
+                try:
+                    write_note(classified, tmp, options.multi_attachment.value)
+                finally:
+                    shutil.rmtree(tmp, ignore_errors=True)
+                return MigrationRecord(
+                    notebook=note.notebook, title=note.title, kind=kind_label,
+                    status=MigrationStatus.SUCCESS, output=[],
+                )
             paths = write_note(classified, Path(options.dest), options.multi_attachment.value)
             return MigrationRecord(
                 notebook=note.notebook, title=note.title, kind=kind_label,
@@ -157,7 +184,7 @@ def _migrate_note(note: Note, options: MigrationOptions, drive, docs, folder_cac
             )
 
     except Exception as exc:
-        console.print(f"[red]  Error: {note.title!r}: {exc}")
+        _eprint(f"Error: {note.title!r}: {exc} ({type(exc).__name__})")
         return MigrationRecord(
             notebook=note.notebook, title=note.title, kind=kind_label,
             status=MigrationStatus.ERROR, output=[], error=str(exc),
@@ -257,8 +284,8 @@ def _print_summary(records: list[MigrationRecord]) -> None:
     if skipped:
         console.print(f"  [yellow]Skipped: {skipped}")
     if errors:
-        console.print(f"  [red]Errors:  {errors}")
+        console.print(f"  [red]Errors:  {errors}[/]")
         for r in records:
             if r.status == MigrationStatus.ERROR:
-                console.print(f"  [red]- {r.notebook}/{r.title}: {r.error}")
+                _eprint(f"  - {r.notebook}/{r.title}: {r.error}")
     console.print()

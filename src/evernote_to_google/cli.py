@@ -9,7 +9,7 @@ from pathlib import Path
 import click
 from rich.console import Console
 
-from .analyze import list_notes_by_mime, print_report, run_analysis, save_json
+from .analyze import find_note, list_notes_by_mime, print_report, run_analysis, save_json
 from .migrate import MigrationOptions, MultiAttachmentPolicy, OutputMode, run_migration
 
 console = Console()
@@ -28,11 +28,16 @@ def main():
               help="Also write statistics to a JSON file.")
 @click.option("--mime", default=None, metavar="MIME_TYPE",
               help="List notes that have an attachment of this MIME type (e.g. application/msword).")
-def analyze(input: Path, output_json: Path | None, mime: str | None):
+@click.option("--findnote", default=None, metavar="TITLE",
+              help="Report which notebook(s) contain a note with this title.")
+def analyze(input: Path, output_json: Path | None, mime: str | None, findnote: str | None):
     """Inspect .enex files and report statistics (no upload)."""
     console.print(f"[dim]Reading: {input}")
     if mime:
         list_notes_by_mime(input, mime)
+        return
+    if findnote:
+        find_note(input, findnote)
         return
     result = run_analysis(input)
     print_report(result)
@@ -50,13 +55,15 @@ def analyze(input: Path, output_json: Path | None, mime: str | None):
               default="gdrive", show_default=True,
               help="gdrive: upload to Google Drive. local: save to a local folder.")
 @click.option("--dest", default="Evernote Migration", show_default=True,
-              help="Output destination: Drive folder path (gdrive, supports a/b/c) or local folder (local).")
+              help="Output destination: Drive folder path (gdrive), local folder (local), or 'null' to run without writing files.")
 @click.option("--dry-run", is_flag=True, default=False,
               help="Authenticate and create root Drive folder only (gdrive mode only).")
 @click.option("--stack", "stacks", multiple=True,
               help="Only migrate notebooks in this stack (repeatable).")
 @click.option("--notebook", "notebooks", multiple=True,
               help="Only migrate this notebook (repeatable).")
+@click.option("--note", default=None,
+              help="Only migrate the note with this exact title (--notebook must also be specified).")
 @click.option("--skip-existing", is_flag=True, default=False,
               help="Skip notes whose output file already exists in the target folder.")
 @click.option("--multi-attachment",
@@ -75,14 +82,16 @@ def migrate(
     dry_run: bool,
     stacks: tuple[str, ...],
     notebooks: tuple[str, ...],
+    note: str | None,
     skip_existing: bool,
     multi_attachment: str,
     log_file: Path,
     verbose: bool,
 ):
     """Migrate Evernote notes to Google Drive (gdrive) or a local folder (local)."""
+    if note and not notebooks:
+        raise click.UsageError("--note requires --notebook to be specified.")
     mode = OutputMode(output_mode.lower())
-
 
     options = MigrationOptions(
         output_mode=mode,
@@ -91,6 +100,7 @@ def migrate(
         skip_existing=skip_existing,
         stacks=list(stacks),
         notebooks=list(notebooks),
+        note=note,
         multi_attachment=MultiAttachmentPolicy(multi_attachment.lower()),
         log_file=log_file,
         verbose=verbose,
@@ -105,7 +115,10 @@ def migrate(
         drive, docs = get_services()
         console.print("[green]Authenticated.")
     else:
-        console.print(f"[dim]Writing to local folder: {Path(dest).resolve()}")
+        if dest == "null":
+            console.print("[dim]Null run — processing notes without writing any files.")
+        else:
+            console.print(f"[dim]Writing to local folder: {Path(dest).resolve()}")
 
     records = run_migration(input, options, drive, docs)
 

@@ -23,6 +23,7 @@ import os
 import platform
 import struct
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -35,7 +36,11 @@ import logging
 from html4docx import HtmlToDocx
 import html4docx.utils as _h4d_utils
 
-logging.getLogger('root').setLevel(logging.ERROR)
+class _SuppressHtml4docx(logging.Filter):
+    def filter(self, record):
+        return 'html4docx' not in (record.pathname or '')
+
+logging.getLogger().addFilter(_SuppressHtml4docx())
 
 # html4docx uses bare print() for unsupported-unit warnings; silence them.
 def _silent_unit_converter(unit_value: str, target_unit: str = "pt"):
@@ -241,7 +246,7 @@ def _attachment_hash_map(attachments: list[Attachment]) -> dict[str, Attachment]
     return {hashlib.md5(att.data).hexdigest(): att for att in attachments}
 
 
-def _strip_navigation_elements(html: str) -> str:
+def _strip_navigation_elements(html: str, _debug_title: str = "") -> str:
     """Remove site-chrome elements captured by the Evernote web clipper.
 
     The web clipper sometimes captures the full page including navigation
@@ -249,17 +254,23 @@ def _strip_navigation_elements(html: str) -> str:
     <footer>) and any block with role="navigation" or role="banner".
     Uses lxml for robustness; falls back to regex on parse failure.
     """
+    import os
+    _debug = os.environ.get("EN_DEBUG_NAV")
     try:
         from lxml import etree
         import lxml.html as lxmlhtml
         root = lxmlhtml.fragment_fromstring(html, create_parent='div')
         _NAV_ROLES = {'navigation', 'banner', 'contentinfo'}
-        for el in root.iter():
+        removed: list[str] = []
+        for el in list(root.iter()):
             tag = el.tag if isinstance(el.tag, str) else ''
             role = (el.get('role') or '').strip().lower()
             if tag.lower() in ('nav', 'header', 'footer') or role in _NAV_ROLES:
                 parent = el.getparent()
                 if parent is not None:
+                    if _debug:
+                        snippet = (el.text_content() if hasattr(el, 'text_content') else '')[:80].replace('\n', ' ')
+                        removed.append(f"<{tag} role={role!r}> {snippet!r}")
                     # Preserve tail text (content after the closing tag)
                     if el.tail:
                         prev = el.getprevious()
@@ -268,6 +279,13 @@ def _strip_navigation_elements(html: str) -> str:
                         else:
                             parent.text = (parent.text or '') + el.tail
                     parent.remove(el)
+        if _debug and removed:
+            prefix = f"[nav-strip] {_debug_title!r}: " if _debug_title else "[nav-strip] "
+            for r in removed:
+                print(f"{prefix}removed {r}")
+        elif _debug:
+            prefix = f"[nav-strip] {_debug_title!r}: " if _debug_title else "[nav-strip] "
+            print(f"{prefix}nothing removed")
         # Serialize children of the wrapper div, not the div itself
         parts = []
         if root.text:
@@ -282,7 +300,7 @@ def _strip_navigation_elements(html: str) -> str:
         return html
 
 
-def _sanitize_enml(enml: str, hash_map: dict[str, Attachment]) -> str:
+def _sanitize_enml(enml: str, hash_map: dict[str, Attachment], title: str = "") -> str:
     """Convert ENML to clean HTML for html4docx.
 
     - <en-media> for embeddable images → <img src="data:...;base64,...">
@@ -291,6 +309,9 @@ def _sanitize_enml(enml: str, hash_map: dict[str, Attachment]) -> str:
     """
     html = re.sub(r'<\?xml[^>]*\?>', '', enml)
     html = re.sub(r'<!DOCTYPE[^>]*>', '', html)
+    # Strip navigation elements BEFORE generating data URIs — lxml's HTML parser
+    # truncates very long attribute values, which corrupts multi-MB base64 strings.
+    html = _strip_navigation_elements(html, _debug_title=title)
 
     def replace_en_media(m: re.Match) -> str:
         tag = m.group(0)
@@ -312,6 +333,14 @@ def _sanitize_enml(enml: str, hash_map: dict[str, Attachment]) -> str:
 
     html = re.sub(r'<en-media\b[^>]*/>', replace_en_media, html)
     html = re.sub(r'<en-media\b[^>]*>.*?</en-media>', replace_en_media, html, flags=re.DOTALL)
+    # Remove <img> tags with external URLs — python-docx cannot fetch remote images,
+    # and web-clipped notes sometimes reference Evernote's CDN instead of embedding data.
+    external_imgs = re.findall(r'<img\b[^>]*\bsrc="(https?://[^"]*)"[^>]*/?>', html, flags=re.IGNORECASE)
+    if external_imgs:
+        note_label = f" {title!r}" if title else ""
+        print(f"WARNING:{note_label}: {len(external_imgs)} external image(s) skipped (not retrievable)", file=sys.stderr, flush=True)
+    html = re.sub(r'<img\b[^>]*\bsrc="https?://[^"]*"[^>]*/>', '', html, flags=re.IGNORECASE)
+    html = re.sub(r'<img\b[^>]*\bsrc="https?://[^"]*"[^>]*>', '', html, flags=re.IGNORECASE)
     # Remove encrypted blocks
     html = re.sub(r'<en-crypt\b[^>]*>.*?</en-crypt>', '', html, flags=re.DOTALL)
     # Convert checkboxes to text markers
@@ -319,13 +348,7 @@ def _sanitize_enml(enml: str, hash_map: dict[str, Attachment]) -> str:
     html = re.sub(r'<en-todo\b[^>]*/>', '[\u00a0]\u00a0', html)
     # Strip the ENML root tag (unknown tags confuse html4docx)
     html = re.sub(r'</?en-note\b[^>]*>', '', html)
-    # Strip site-chrome elements (nav menus, headers, footers) left behind by
-    # the Evernote web clipper when it captures the full page instead of just
-    # the article body.
-    html = _strip_navigation_elements(html)
     return html.strip()
-
-
 
 
 def _compact_doc_spacing(doc: Document) -> None:
@@ -374,7 +397,7 @@ def _build_doc(
         url = note.source_url
         parts.append(f'<p>Source: <a href="{url}">{url}</a></p>')
     if note.enml:
-        parts.append(_sanitize_enml(note.enml, hash_map))
+        parts.append(_sanitize_enml(note.enml, hash_map, title=note.title))
 
     html = '\n'.join(parts)
     if html.strip():
@@ -409,6 +432,31 @@ def _build_doc(
                 sz.addnext(szcs)
             else:
                 szcs.set(qn('w:val'), sz.get(qn('w:val')))
+
+    # Cap inline pictures that exceed page width or height.
+    # html4docx adds images at their natural pixel size; we resize here so that
+    # no picture is wider than 500 px or taller than 700 px (fits a portrait page).
+    _MAX_CX = int(500 * 9525)   # 500 px in EMU  (1 px = 914400/96 = 9525 EMU at 96 dpi)
+    _MAX_CY = int(700 * 9525)   # 700 px in EMU
+    for para in doc.paragraphs:
+        for run in para.runs:
+            for inline in run._r.findall('.//' + qn('wp:inline')):
+                extent = inline.find(qn('wp:extent'))
+                if extent is None:
+                    continue
+                cx = int(extent.get('cx', '0'))
+                cy = int(extent.get('cy', '0'))
+                if cx <= 0 or cy <= 0:
+                    continue
+                scale = min(_MAX_CX / cx, _MAX_CY / cy, 1.0)
+                if scale < 1.0:
+                    new_cx, new_cy = int(cx * scale), int(cy * scale)
+                    extent.set('cx', str(new_cx))
+                    extent.set('cy', str(new_cy))
+                    # Also update the shape transform extent inside the drawing
+                    for a_ext in inline.findall('.//' + qn('a:ext')):
+                        a_ext.set('cx', str(new_cx))
+                        a_ext.set('cy', str(new_cy))
 
     # Strip trailing blank (no text, no image) paragraphs before attachment links
     while doc.paragraphs:

@@ -23,7 +23,16 @@
       "Bash(python -c \"import html4docx.utils as u; import inspect; print\\(inspect.getsource\\(u.unit_converter\\)\\)\")",
       "Bash(python -c \"import html4docx.h4d as h; import inspect; print\\(inspect.getsource\\(h.HtmlToDocx.add_styles_to_table_cell\\)\\)\")",
       "Bash(grep -r \"beautifulsoup\\\\|bs4\\\\|lxml\" /Users/moshe/Dev/evernote-to-gdrive/pyproject.toml /Users/moshe/Dev/evernote-to-gdrive/requirements*.txt)",
-      "Bash(xargs -I{} sh -c \"iconv -f utf-8 -t utf-8 \"\"{}\"\" 2>/dev/null | grep -l \"\"הפסגה\"\" && echo \"\"{}\"\"\")"
+      "Bash(xargs -I{} sh -c \"iconv -f utf-8 -t utf-8 \"\"{}\"\" 2>/dev/null | grep -l \"\"הפסגה\"\" && echo \"\"{}\"\"\")",
+      "Bash(pip install:*)",
+      "Bash(python -c \"import evernote_to_google.parser as p; import inspect; print\\(inspect.getfile\\(p\\)\\)\")",
+      "Bash(python3 -c \"import html4docx; import inspect; print\\(inspect.getfile\\(html4docx\\)\\)\")",
+      "Bash(python3 -c \"from docx.oxml.ns import qn; print\\(qn\\(''wp:inline''\\)\\); print\\(qn\\(''wp:extent''\\)\\); print\\(qn\\(''a:ext''\\)\\)\")",
+      "Bash(python3:*)",
+      "Bash(evernote-to-gdrive migrate:*)",
+      "Bash(ls ./Evernote Migration/מתכונים יעל/*קישואים*)",
+      "Bash(find './Evernote Migration' -name *.docx -newer src/evernote_to_google/local_writer.py)",
+      "Bash(evernote-to-gdrive analyze:*)"
     ]
   }
 }
