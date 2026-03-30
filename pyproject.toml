@@ -15,6 +15,7 @@ dependencies = [
     "google-auth-oauthlib>=1.1",
     "rich>=13.0",
     "html2text>=2024.2",
+    "html4docx @ git+https://github.com/dfop02/html4docx.git",
     "python-docx>=1.1",
 ]
 
