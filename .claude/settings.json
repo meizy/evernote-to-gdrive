@@ -4,7 +4,8 @@
       "Bash(python3:*)",
       "Bash(pip install:*)",
       "Bash(evernote-to-gdrive migrate:*)",
-      "Bash(evernote-to-gdrive analyze:*)"
+      "Bash(evernote-to-gdrive analyze:*)",
+      "Bash(.venv/bin/python test_drive_image_embed.py)"
     ],
     "additionalDirectories": [
       "/Users/moshe/.claude"
