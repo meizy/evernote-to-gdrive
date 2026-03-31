@@ -11,7 +11,8 @@
       "Bash(.venv/bin/evernote-to-gdrive analyze:*)",
       "Read(//<title>החמישיה הפותחת: המאפיות הטובות בתל אביב<\\\\/title>/,/<\\\\/note>/**)",
       "Read(//<title>החמישיה הפותחת: המאפיות הטובות בתל אביב<\\\\/title>/,/<\\\\/note>/{if \\(/en-media/**)",
-      "Bash(perl -pe 's/<[^>]+>//g')"
+      "Bash(perl -pe 's/<[^>]+>//g')",
+      "Bash(python test_html_import.py)"
     ],
     "additionalDirectories": [
       "/Users/moshe/.claude"
