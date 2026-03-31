@@ -12,6 +12,7 @@ ENEX is an XML format. Each <note> contains:
 from __future__ import annotations
 
 import base64
+import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +26,7 @@ class Attachment:
     mime: str
     data: bytes
     filename: str | None  # original filename from <resource-attributes>/<file-name>
+    hash: str = ""       # MD5 hex digest of data (matches <en-media hash="..."> in ENML)
 
 
 @dataclass
@@ -73,7 +75,7 @@ def _parse_resource(resource_el: etree._Element) -> Attachment:
     if attrs is not None:
         filename = _text(attrs, "file-name")
 
-    return Attachment(mime=mime, data=raw, filename=filename)
+    return Attachment(mime=mime, data=raw, filename=filename, hash=hashlib.md5(raw).hexdigest())
 
 
 def _parse_note(note_el: etree._Element, notebook: str) -> Note:

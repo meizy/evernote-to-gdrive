@@ -10,7 +10,7 @@ import click
 from rich.console import Console
 
 from .analyze import find_note, list_notes_by_mime, print_report, run_analysis, save_json
-from .migrate import MigrationOptions, MultiAttachmentPolicy, OutputMode, run_migration
+from .migrate import AttachmentPolicy, MigrationOptions, OutputMode, run_migration
 
 console = Console()
 
@@ -66,10 +66,13 @@ def analyze(input: Path, output_json: Path | None, mime: str | None, findnote: s
               help="Only migrate the note with this exact title (--notebook must also be specified).")
 @click.option("--skip-existing", is_flag=True, default=False,
               help="Skip notes whose output file already exists in the target folder.")
-@click.option("--multi-attachment",
-              type=click.Choice(["doc", "files"], case_sensitive=False),
+@click.option("--attachments",
+              type=click.Choice(["doc", "files", "both"], case_sensitive=False),
               default="doc", show_default=True,
-              help="How to handle notes with multiple images.")
+              help="How to handle attachments: "
+                   "doc=embed images in doc + link PDFs (delete temp image files); "
+                   "files=one raw file per attachment; "
+                   "both=embed images in doc AND keep all as sibling files.")
 @click.option("--log-file", type=click.Path(path_type=Path),
               default=None,
               help="Write migration log (CSV) to this file.")
@@ -84,7 +87,7 @@ def migrate(
     notebooks: tuple[str, ...],
     note: str | None,
     skip_existing: bool,
-    multi_attachment: str,
+    attachments: str,
     log_file: Path,
     verbose: bool,
 ):
@@ -101,7 +104,7 @@ def migrate(
         stacks=list(stacks),
         notebooks=list(notebooks),
         note=note,
-        multi_attachment=MultiAttachmentPolicy(multi_attachment.lower()),
+        attachments=AttachmentPolicy(attachments.lower()),
         log_file=log_file,
         verbose=verbose,
     )

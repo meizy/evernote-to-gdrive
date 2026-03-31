@@ -5,7 +5,7 @@
 export/
 
 # Migration output
-Evernote Migration/
+Evernote Migration*/
 migration.log
 
 # Database

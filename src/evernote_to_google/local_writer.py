@@ -19,15 +19,23 @@ import ctypes.wintypes
 import os
 import platform
 import struct
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ._docx_builder import build_doc, add_file_hyperlink
 from .classifier import (
-    attachment_drive_filename, ClassifiedNote,
-    _EMBEDDABLE_IMAGE_MIME, _safe_name, _ext_for_mime,
+    attachment_ext,
+    attachment_label,
+    attachment_sibling_filename,
+    _EMBEDDABLE_IMAGE_MIME,
+    _safe_name,
 )
 from .parser import Attachment, Note
+
+if TYPE_CHECKING:
+    from .migrate import AttachmentPolicy
 
 
 # ── filesystem timestamps ─────────────────────────────────────────────────────
@@ -129,17 +137,28 @@ def _unique_path(path: Path) -> Path:
 
 # ── docx helpers ──────────────────────────────────────────────────────────────
 
-def _write_sibling_files(doc, attachments: list[Attachment], title: str, folder: Path, note: Note) -> None:
-    """Write non-image attachments as sibling files and add hyperlinks into doc."""
-    sibling_index = 1
+def _write_sibling_files(doc, attachments: list[Attachment], title: str, folder: Path, note: Note, policy: "AttachmentPolicy") -> None:
+    """
+    Write attachments as sibling files and add hyperlinks into doc for non-image siblings.
+
+    DOC policy:  only non-embeddable attachments (PDFs etc.) become siblings.
+    BOTH policy: all attachments become siblings; images are also embedded in the doc.
+    FILES policy: not called from this path (handled in migrate.py).
+    """
+    counters: dict[str, int] = defaultdict(int)
     for att in attachments:
-        if att.mime not in _EMBEDDABLE_IMAGE_MIME:
-            filename = attachment_drive_filename(title, sibling_index, att)
-            sibling = _unique_path(folder / filename)
-            sibling.write_bytes(att.data)
-            _set_timestamps(sibling, note.created, note.updated)
+        is_image = att.mime in _EMBEDDABLE_IMAGE_MIME
+        if is_image and policy not in ("both", "files"):
+            continue  # in DOC mode, images are only embedded, not written as siblings
+        label = attachment_label(att.mime)
+        counters[label] += 1
+        filename = attachment_sibling_filename(title, label, counters[label], att)
+        sibling = _unique_path(folder / filename)
+        sibling.write_bytes(att.data)
+        _set_timestamps(sibling, note.created, note.updated)
+        if not is_image:
+            # Only insert hyperlinks for non-image siblings (images are already visible inline)
             add_file_hyperlink(doc, f"[Attachment: {sibling.name}]", sibling.name)
-            sibling_index += 1
 
 
 def _save_doc(doc, path: Path, note: Note) -> Path:
@@ -153,25 +172,27 @@ def _save_doc(doc, path: Path, note: Note) -> Path:
 # ── public API ────────────────────────────────────────────────────────────────
 
 class LocalWriter:
-    def __init__(self, output_dir: Path) -> None:
+    def __init__(self, output_dir: Path, policy: "AttachmentPolicy") -> None:
         self._output_dir = output_dir
+        self._policy = policy
 
     def note_exists(self, note: Note, safe_title: str) -> bool:
         folder = note_folder(self._output_dir, note)
         return any(folder.glob(f"{safe_title}.*")) or any(folder.glob(f"{safe_title}_0.*"))
 
-    def write_doc(self, title: str, plain_text: str, attachments: list[Attachment], note: Note) -> str:
+    def write_doc(self, title: str, plain_text: str, attachments: list[Attachment], note: Note, policy: "AttachmentPolicy | None" = None) -> str:
+        policy = policy or self._policy
         folder = note_folder(self._output_dir, note)
         doc = build_doc(note, attachments)
         if attachments:
-            _write_sibling_files(doc, attachments, note.title, folder, note)
+            _write_sibling_files(doc, attachments, note.title, folder, note, policy)
         dest = _save_doc(doc, folder / f"{title}.docx", note)
         return str(dest)
 
     def write_raw_file(self, name: str, data: bytes, mime_type: str, note: Note) -> str:
         folder = note_folder(self._output_dir, note)
-        ext = _ext_for_mime(mime_type)
-        # attachment_drive_filename already includes the extension; single-attachment name doesn't
+        ext = attachment_ext(mime_type)
+        # attachment_sibling_filename already includes the extension; single-attachment name doesn't
         if ext and not name.endswith(ext):
             name = f"{name}{ext}"
         dest = _unique_path(folder / name)

@@ -4,24 +4,19 @@ Google Docs API operations: create documents and insert content.
 Strategy:
   1. Create an empty Google Doc via the Drive API (gives us a file ID).
   2. Use the Docs API batchUpdate to insert text and inline images.
-  3. PDFs are uploaded as separate Drive files and their links appended to the doc.
+  3. All attachments (images and PDFs/other) are pre-uploaded by the caller;
+     their public URLs (images) and Drive view URLs (others) are passed in.
   4. After all batchUpdate calls, restore modifiedTime via files().update().
      (batchUpdate resets modifiedTime to the current wall-clock time.)
 
-Insertion order matters: the Docs API uses character indices. We build a list
-of "segments" (text or image) in document order, then insert them in reverse
-order so that earlier insertions don't shift later indices (or we always insert
-at index 1, pushing content down).
-
-We use the "insert at index 1" approach for simplicity: insert the last segment
-first, each time at index 1, so the document ends up in the original order.
+Insertion order matters: the Docs API uses character indices. We insert
+everything at index 1 in reverse segment order so the document ends up
+reading top-to-bottom.
 """
 
 from __future__ import annotations
 
-import base64
 import io
-import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -31,26 +26,24 @@ try:
 except ImportError:
     _HAS_PIL = False
 
-from googleapiclient.errors import HttpError
+from .classifier import _is_rtl
+from .drive import _retry
+from .parser import Note
 
-from .classifier import attachment_drive_filename, _EMBEDDABLE_IMAGE_MIME, _is_rtl
-from .drive import drive_url, upload_file, _retry
-from .parser import Attachment, Note
+
+# ── public segment types (constructed by callers) ─────────────────────────────
+
+@dataclass
+class DocImage:
+    """Pre-resolved inline image: a publicly accessible URL with dimensions."""
+    url: str
+    width_pt: float
+    height_pt: float
 
 
 @dataclass
-class _TextSegment:
-    text: str
-
-
-@dataclass
-class _ImageSegment:
-    attachment: Attachment
-    index: int  # 1-based position among attachments
-
-
-@dataclass
-class _LinkSegment:
+class DocLink:
+    """Pre-resolved file link: a display label and a Drive view URL."""
     label: str
     url: str
 
@@ -64,14 +57,15 @@ def create_doc(
     title: str,
     plain_text: str,
     note: Note,
-    attachments: list[Attachment],
+    resolved_attachments: list,  # list[DocImage | DocLink], in note order
     parent_id: str,
     description: str | None = None,
     modified_time=None,
+    body_segments: list | None = None,  # list[str | DocImage | DocLink], overrides plain_text + resolved_attachments
 ) -> str:
     """
-    Create a Google Doc with `plain_text` as body content.
-    Embeds JPEG/PNG/GIF attachments inline; uploads PDFs to Drive and inserts links.
+    Create a Google Doc with plain_text as body and pre-resolved attachment references.
+    DocImage entries are embedded inline; DocLink entries are inserted as hyperlinks.
     Returns the Doc file ID.
     """
     metadata: dict[str, Any] = {
@@ -87,18 +81,7 @@ def create_doc(
     file = _retry(drive.files().create(body=metadata, fields="id").execute)
     doc_id = file["id"]
 
-    requests = _build_requests(
-        drive=drive,
-        docs=docs,
-        doc_id=doc_id,
-        plain_text=plain_text,
-        note=note,
-        attachments=attachments,
-        parent_id=parent_id,
-        description=description,
-        modified_time=modified_time,
-    )
-
+    requests = _build_requests(plain_text, note, resolved_attachments, body_segments=body_segments)
     if requests:
         _retry(docs.documents().batchUpdate(documentId=doc_id, body={"requests": requests}).execute)
 
@@ -119,11 +102,19 @@ def create_doc(
 
     return doc_id
 
+
 # ── internals ─────────────────────────────────────────────────────────────────
 
+@dataclass
+class _TextSegment:
+    text: str
+
+
 def _build_requests(
-    drive, docs, doc_id: str, plain_text: str, note: Note, attachments: list[Attachment], parent_id: str,
-    description: str | None = None, modified_time=None,
+    plain_text: str,
+    note: Note,
+    resolved_attachments: list,
+    body_segments: list | None = None,
 ) -> list[dict]:
     """
     Build a list of Docs API batchUpdate requests that populate the document.
@@ -131,48 +122,34 @@ def _build_requests(
     We insert everything at index 1 in reverse segment order so the doc ends
     up reading top-to-bottom:
       [optional source URL header]
-      [plain text body]
-      [attachment 1: inline image OR link]
-      [attachment 2: ...]
-      ...
-    """
-    segments: list[_TextSegment | _ImageSegment | _LinkSegment] = []
+      [body: either interleaved text+images (body_segments) or plain_text then attachments]
 
-    # Header: source URL
+    body_segments, when provided, is list[str | DocImage | DocLink] in document order
+    and is used instead of (plain_text, resolved_attachments) to preserve inline image positions.
+    """
+    segments: list[_TextSegment | DocImage | DocLink] = []
+
     if note.source_url:
         segments.append(_TextSegment(f"Source: {note.source_url}\n\n"))
 
-    # Body text
-    if plain_text:
-        segments.append(_TextSegment(plain_text + "\n"))
+    if body_segments is not None:
+        for seg in body_segments:
+            if isinstance(seg, str):
+                segments.append(_TextSegment(seg + "\n" if not seg.endswith("\n") else seg))
+            else:
+                segments.append(seg)
+    else:
+        if plain_text:
+            segments.append(_TextSegment(plain_text + "\n"))
+        segments.extend(resolved_attachments)
 
-    # Attachments
-    for i, att in enumerate(attachments, start=1):
-        if att.mime in _EMBEDDABLE_IMAGE_MIME:
-            segments.append(_ImageSegment(attachment=att, index=i))
-        else:
-            # Upload to Drive, then insert a link
-            filename = attachment_drive_filename(note.title, i, att)
-            file_id = upload_file(
-                drive,
-                name=filename,
-                data=att.data,
-                mime_type=att.mime,
-                parent_id=parent_id,
-                description=description,
-                modified_time=modified_time,
-            )
-            url = drive_url(file_id)
-            segments.append(_LinkSegment(label=f"[{filename}]", url=url))
-
-    # Build Docs API requests by inserting segments in reverse at index 1
     requests: list[dict] = []
     for seg in reversed(segments):
         if isinstance(seg, _TextSegment):
             requests.extend(_insert_text_requests(seg.text))
-        elif isinstance(seg, _ImageSegment):
-            requests.extend(_insert_image_requests(seg.attachment))
-        elif isinstance(seg, _LinkSegment):
+        elif isinstance(seg, DocImage):
+            requests.extend(_insert_image_requests(seg))
+        elif isinstance(seg, DocLink):
             requests.extend(_insert_link_requests(seg.label, seg.url))
 
     return requests
@@ -212,23 +189,15 @@ def _image_size_pt(data: bytes) -> tuple[float, float]:
     return w_pt * scale, h_pt * scale
 
 
-def _insert_image_requests(att: Attachment) -> list[dict]:
-    # The Docs API requires a publicly accessible URI for insertInlineImage.
-    # We use a data URI as a workaround — note: this only works for small images
-    # and is not officially documented but works in practice for JPEG/PNG/GIF
-    # up to a few MB. For production, uploading to a public GCS bucket and
-    # using that URL would be more reliable.
-    b64 = base64.b64encode(att.data).decode()
-    uri = f"data:{att.mime};base64,{b64}"
-    w_pt, h_pt = _image_size_pt(att.data)
+def _insert_image_requests(img: DocImage) -> list[dict]:
     return [
         {
             "insertInlineImage": {
                 "location": {"index": 1},
-                "uri": uri,
+                "uri": img.url,
                 "objectSize": {
-                    "width": {"magnitude": w_pt, "unit": "PT"},
-                    "height": {"magnitude": h_pt, "unit": "PT"},
+                    "width": {"magnitude": img.width_pt, "unit": "PT"},
+                    "height": {"magnitude": img.height_pt, "unit": "PT"},
                 },
             }
         }

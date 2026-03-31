@@ -25,20 +25,50 @@ Each note falls into one of these categories:
 
 "Meaningful text" means non-empty after stripping Evernote's HTML markup and whitespace.
 
-### Multi-attachment policy (`--multi-attachment`)
+### Attachment policy (`--attachments`)
 
-Controlled by a CLI flag, default: `doc`.
+Controlled by a CLI flag, default: `doc`. Applies to all note types that produce a doc (text+attachments and attachment-only-multi). For text+attachment notes, `files` implies `both` since the doc must exist to hold the text.
 
 | Flag value | Behavior |
 |---|---|
-| `doc` *(default)* | Create a Google Doc listing all attachments; upload each file to Drive and insert links |
-| `files` | Upload each attachment as a separate file, named `<note_title>_<n>.<ext>` (e.g. `xxx_1.pdf`, `xxx_2.pdf`) |
+| `doc` *(default)* | Embed images inline in the doc; upload PDFs/other as sibling files and link them. Temp image files created during gdrive embedding are deleted after the doc is created. |
+| `files` | One raw sibling file per attachment, named `<title>_<label>_<n>.<ext>`. For text+attachment notes, the doc is also created and all attachments are kept as siblings (same as `both`). |
+| `both` | Embed images inline in the doc AND keep all attachments as sibling files. |
+
+### Attachment sibling filename pattern
+
+Sibling files (attachments written alongside a doc) are named:
+
+```
+<note_title>_<label>_<n>.<ext>
+```
+
+Where `<label>` is derived from the MIME type and `<n>` is a per-label running counter:
+
+| MIME primary type | Label | Example |
+|---|---|---|
+| `image/*` | `img` | `My Note_img_1.jpg` |
+| `audio/*` | `aud` | `My Note_aud_1.mp3` |
+| `video/*` | `vid` | `My Note_vid_1.mp4` |
+| `text/*` | `txt` | `My Note_txt_1.txt` |
+| `application/pdf` | `pdf` | `My Note_pdf_1.pdf` |
+| `application/*` (other) | first 3 chars of subtype | `My Note_zip_1.zip`, `My Note_doc_1.docx` |
+
+When a doc has sibling files, the doc itself is named `<title>_0` (e.g. `My Note_0.docx`) so all related files sort together.
 
 ### Image embedding in Google Docs
 
-The Google Docs API supports **inline image insertion** (`insertInlineImage`) for JPEG, PNG, and GIF. Images are embedded directly in the document body.
+The Google Docs API supports **inline image insertion** (`insertInlineImage`) for JPEG, PNG, and GIF. The API requires a publicly accessible URL (max 2KB) — base64 data URIs are not supported.
 
-**PDFs cannot be embedded** via the Docs API. PDF attachments in text+attachment notes are uploaded as separate Drive files named `<note_title>_<n>.pdf` and linked from the Google Doc (a clearly labelled hyperlink is inserted at the attachment's position in the document).
+**Embedding flow (gdrive mode):**
+1. Upload the image to Drive in the notebook folder using the sibling filename pattern.
+2. Grant public read access (`anyone with link`).
+3. Pass the public Drive download URL to `insertInlineImage` in the doc's single `batchUpdate` call.
+4. If policy is `doc`: delete the uploaded image file after the doc is created (it was only needed temporarily). If policy is `both` or `files`: keep it.
+
+This results in **2N+2 API calls** per note without deletion (N uploads + N permission grants + 1 doc create + 1 modifiedTime patch), or **3N+2** with deletion.
+
+**PDFs cannot be embedded** via the Docs API. PDF attachments are uploaded as sibling Drive files and linked from the doc with a clearly labelled hyperlink.
 
 ## Notebook → Folder Mapping
 
@@ -135,10 +165,12 @@ Writes notes to a local folder tree on disk (mirroring the stack/notebook hierar
 | Note type | Local output |
 |---|---|
 | Attachment-only, single | Raw file (`<title>.<ext>`) |
-| Attachment-only, multi (`--multi-attachment=doc`) | `.docx` listing all attachments as clickable hyperlinks; each attachment written as a sibling file |
-| Attachment-only, multi (`--multi-attachment=files`) | One raw file per attachment (`<title>_<n>.<ext>`) |
+| Attachment-only, multi (`--attachments=doc`) | `<title>_0.docx` (if any siblings) with images embedded inline; PDFs/other written as sibling files (`<title>_pdf_1.pdf` etc.) and linked in the doc |
+| Attachment-only, multi (`--attachments=files`) | One raw sibling file per attachment (`<title>_img_1.jpg`, `<title>_pdf_1.pdf`, etc.) |
+| Attachment-only, multi (`--attachments=both`) | `<title>_0.docx` with images embedded AND all attachments kept as sibling files |
 | Text-only | `<title>.docx` |
-| Text + attachments | `<title>.docx` with images embedded inline; PDFs written as sibling files and referenced as clickable hyperlinks within the doc |
+| Text + attachments (`--attachments=doc`) | `<title>_0.docx` with images embedded inline; PDFs/other as sibling files linked in the doc |
+| Text + attachments (`--attachments=files` or `both`) | `<title>_0.docx` with images embedded inline; all attachments also kept as sibling files |
 
 RTL paragraphs (Hebrew, Arabic) are detected and marked as bidirectional in the `.docx` XML so Word, LibreOffice, and Google Docs all render them correctly.
 
@@ -164,7 +196,7 @@ evernote-to-gdrive migrate INPUT [OPTIONS]
   --stack TEXT               Only migrate notebooks in this stack (repeatable)
   --notebook TEXT            Only migrate this notebook (repeatable)
   --skip-existing            Skip notes whose output file already exists in the target folder
-  --multi-attachment [doc|files]  How to handle notes with multiple attachments [default: doc]
+  --attachments [doc|files|both]  How to handle attachments [default: doc]
   --log-file PATH            Write migration log (CSV) [default: migration.log]
 ```
 
@@ -174,11 +206,36 @@ evernote-to-gdrive migrate INPUT [OPTIONS]
 - Log file records: note title, notebook, classification, Drive file ID(s), status (success / skipped / error)
 - Final summary: total notes, counts per category, total uploaded size, errors
 
+## Google API Usage
+
+### Quota Management
+
+Google Drive and Google Docs APIs have **separate, independent quotas**. Drive API calls (file creation, metadata updates, uploads) count against the Drive quota; Docs API calls (`batchUpdate`, `get`) count against the Docs quota. Both must be managed independently.
+
+**Batch calls** — use batch requests wherever the API supports them. Specifically:
+- Combine multiple Docs `batchUpdate` requests (e.g. text insertion, image embedding, paragraph direction) into a single call per document rather than one call per operation.
+- Group Drive metadata updates (e.g. `modifiedTime`, `description`) into a single `files.update` call.
+
+**Proactive pacing** — do not fire requests as fast as possible. Insert deliberate inter-call delays to stay within quota:
+- After each Drive file creation or upload, wait a short interval (e.g. 0.1–0.5 s) before the next call.
+- After each Docs `batchUpdate`, wait similarly.
+- Track calls per second/minute separately for Drive and Docs and throttle each independently.
+
+**Exponential backoff on quota errors** — if a `429 Resource Exhausted` or `403 rateLimitExceeded` response is received:
+1. Catch the error and extract the retry-after hint if present.
+2. Wait `base_delay * 2^attempt` seconds (base delay: 1 s; max delay: 64 s).
+3. Retry up to 5 times before marking the note as failed and continuing.
+4. Log each retry with attempt number and delay at DEBUG level.
+
+This applies to both Drive and Docs API calls.
+
+**Resuming with `--skip-existing`** — if a migration run is interrupted (e.g. quota exhausted for the day), rerunning with `--skip-existing` allows resuming without re-uploading completed notes. This is an important quota-conservation mechanism. To keep the skip check itself parsimonious, existing files in each target folder must be fetched in a single `files.list` call (with the folder ID as parent) rather than issuing one lookup per note. The result is cached in memory for the duration of the run.
+
 ## Error Handling
 
 - **Duplicate filenames**: append `(2)`, `(3)`, etc.
 - **Unsupported attachment types**: upload as-is with original MIME type; log a warning
-- **API rate limits**: exponential backoff with retry (max 5 attempts)
+- **API rate limits**: exponential backoff with retry (max 5 attempts) — see Google API Usage above
 - **Partial failures**: continue migration; report failed notes at the end without halting the run
 
 ## Out of Scope (v1)

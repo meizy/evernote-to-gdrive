@@ -8,6 +8,7 @@ import csv
 import shutil
 import sys
 import tempfile
+from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -16,7 +17,7 @@ from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
 from rich.table import Column
 
-from .classifier import NoteKind, attachment_drive_filename, classify, _safe_name, _EMBEDDABLE_IMAGE_MIME
+from .classifier import NoteKind, attachment_label, attachment_sibling_filename, classify, _safe_name, _EMBEDDABLE_IMAGE_MIME
 from .parser import Note, load_notes
 
 console = Console()
@@ -30,9 +31,10 @@ def _eprint(*args, **kwargs):
     print(*args, file=sys.stderr, flush=True, **kwargs)
 
 
-class MultiAttachmentPolicy(str, Enum):
+class AttachmentPolicy(str, Enum):
     DOC = "doc"
     FILES = "files"
+    BOTH = "both"
 
 
 class OutputMode(str, Enum):
@@ -65,7 +67,7 @@ class MigrationOptions:
     notebooks: list[str]          # empty = all
     stacks: list[str]             # empty = all
     note: str | None              # if set, only migrate this one note title
-    multi_attachment: MultiAttachmentPolicy
+    attachments: AttachmentPolicy
     log_file: Path | None
     verbose: bool = False
 
@@ -109,10 +111,10 @@ def run_migration(input_path: Path, options: MigrationOptions) -> list[Migration
 
     if options.output_mode == OutputMode.GOOGLE:
         from .gdrive_writer import GDriveWriter
-        writer = GDriveWriter(options.dest)
+        writer = GDriveWriter(options.dest, options.attachments)
     else:
         from .local_writer import LocalWriter
-        writer = LocalWriter(Path(options.dest))
+        writer = LocalWriter(Path(options.dest), options.attachments)
 
     if options.dry_run:
         root_id = writer.dry_run()
@@ -159,6 +161,14 @@ def run_migration(input_path: Path, options: MigrationOptions) -> list[Migration
 
 # ── per-note dispatch ─────────────────────────────────────────────────────────
 
+def _has_doc_siblings(attachments: list, policy: AttachmentPolicy) -> bool:
+    """Return True if the doc will have sibling files (determines whether _0 suffix is needed)."""
+    if policy in (AttachmentPolicy.BOTH, AttachmentPolicy.FILES):
+        return len(attachments) > 0
+    # DOC: only non-embeddable attachments become siblings
+    return any(a.mime not in _EMBEDDABLE_IMAGE_MIME for a in attachments)
+
+
 def _migrate_note(note: Note, options: MigrationOptions, writer) -> MigrationRecord:
     classified = classify(note)
     kind_label = classified.kind.name.lower()
@@ -175,6 +185,10 @@ def _migrate_note(note: Note, options: MigrationOptions, writer) -> MigrationRec
         attachments = classified.attachments
         plain_text = classified.plain_text
 
+        # Web-clipped notes have a source_url. Force doc policy to avoid
+        # producing many junk sibling files from page images.
+        policy = AttachmentPolicy.DOC if note.source_url else options.attachments
+
         if kind == NoteKind.TEXT_ONLY:
             output = [writer.write_doc(safe_title, plain_text, [], note)]
 
@@ -183,23 +197,26 @@ def _migrate_note(note: Note, options: MigrationOptions, writer) -> MigrationRec
             output = [writer.write_raw_file(safe_title, att.data, att.mime, note)]
 
         elif kind == NoteKind.ATTACHMENT_ONLY_MULTI:
-            if options.multi_attachment == MultiAttachmentPolicy.FILES:
-                output = [
-                    writer.write_raw_file(
-                        attachment_drive_filename(note.title, i, att),
-                        att.data, att.mime, note,
-                    )
-                    for i, att in enumerate(attachments, start=1)
-                ]
+            if policy == AttachmentPolicy.FILES:
+                counters: dict[str, int] = defaultdict(int)
+                output = []
+                for att in attachments:
+                    label = attachment_label(att.mime)
+                    counters[label] += 1
+                    filename = attachment_sibling_filename(note.title, label, counters[label], att)
+                    output.append(writer.write_raw_file(filename, att.data, att.mime, note))
             else:
-                has_siblings = any(a.mime not in _EMBEDDABLE_IMAGE_MIME for a in attachments)
+                has_siblings = _has_doc_siblings(attachments, policy)
                 doc_title = f"{safe_title}_0" if has_siblings else safe_title
-                output = [writer.write_doc(doc_title, "", attachments, note)]
+                output = [writer.write_doc(doc_title, "", attachments, note, policy, classified.segments)]
 
         elif kind == NoteKind.TEXT_WITH_ATTACHMENTS:
-            has_siblings = any(a.mime not in _EMBEDDABLE_IMAGE_MIME for a in attachments)
+            # FILES implies BOTH for text notes: the doc must exist for the text,
+            # so all attachments are also written as siblings.
+            effective = AttachmentPolicy.BOTH if policy == AttachmentPolicy.FILES else policy
+            has_siblings = _has_doc_siblings(attachments, effective)
             doc_title = f"{safe_title}_0" if has_siblings else safe_title
-            output = [writer.write_doc(doc_title, plain_text, attachments, note)]
+            output = [writer.write_doc(doc_title, plain_text, attachments, note, effective, classified.segments)]
 
         else:
             raise ValueError(f"Unhandled note kind: {kind}")

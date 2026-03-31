@@ -5,7 +5,13 @@
       "Bash(pip install:*)",
       "Bash(evernote-to-gdrive migrate:*)",
       "Bash(evernote-to-gdrive analyze:*)",
-      "Bash(.venv/bin/python test_drive_image_embed.py)"
+      "Bash(.venv/bin/python test_drive_image_embed.py)",
+      "Bash(.venv/bin/python -c \":*)",
+      "Bash(.venv/bin/evernote-to-gdrive migrate:*)",
+      "Bash(.venv/bin/evernote-to-gdrive analyze:*)",
+      "Read(//<title>החמישיה הפותחת: המאפיות הטובות בתל אביב<\\\\/title>/,/<\\\\/note>/**)",
+      "Read(//<title>החמישיה הפותחת: המאפיות הטובות בתל אביב<\\\\/title>/,/<\\\\/note>/{if \\(/en-media/**)",
+      "Bash(perl -pe 's/<[^>]+>//g')"
     ],
     "additionalDirectories": [
       "/Users/moshe/.claude"
