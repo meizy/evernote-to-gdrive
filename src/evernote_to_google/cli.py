@@ -112,6 +112,8 @@ def migrate(
     if mode == OutputMode.GOOGLE:
         if dry_run:
             console.print("[yellow]Dry run — only the root Drive folder will be created.")
+        else:
+            console.print(f"[dim]Writing to Google Drive folder: '{dest}'")
     else:
         if dest == "null":
             console.print("[dim]Null run — output is written to a temp dir and discarded.")

@@ -8,8 +8,6 @@ import re
 from dataclasses import dataclass
 from enum import Enum, auto
 
-import html2text
-
 from .parser import Attachment, Note
 
 
@@ -26,9 +24,6 @@ class ClassifiedNote:
     kind: NoteKind
     plain_text: str  # stripped body text (may be empty)
     attachments: list[Attachment] = None  # note.attachments minus unnamed octet-stream blobs
-    # Ordered list of interleaved text chunks (str) and Attachment objects, derived from
-    # ENML <en-media> tag positions. None when there are no inline attachments.
-    segments: list | None = None
 
     def __post_init__(self):
         if self.attachments is None:
@@ -37,55 +32,12 @@ class ClassifiedNote:
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-_h2t = html2text.HTML2Text()
-_h2t.ignore_links = False
-_h2t.ignore_images = True
-_h2t.body_width = 0  # no wrapping
-
-
 def enml_to_text(enml: str) -> str:
-    """Convert ENML (XHTML) to plain text. Returns empty string if nothing meaningful."""
+    """Extract plain text from ENML for classification purposes."""
     if not enml:
         return ""
-    try:
-        text = _h2t.handle(enml)
-    except Exception:
-        return ""
-    return text.strip()
-
-
-def enml_to_segments(enml: str, attachments: list[Attachment]) -> list:
-    """
-    Split ENML into an ordered list of str (HTML chunks) and Attachment objects,
-    preserving the inline position of each <en-media> tag.
-
-    Returns list[str | Attachment]. Text chunks are raw HTML; callers should
-    convert them with enml_to_text before use.
-    """
-    if not enml or not attachments:
-        return [enml] if enml else []
-
-    hash_to_att = {att.hash: att for att in attachments if att.hash}
-    if not hash_to_att:
-        return [enml]
-
-    # Split at self-closing <en-media .../> tags, capturing the tag itself
-    parts = re.split(r'(<en-media\b[^>]*/?>)', enml)
-
-    segments: list = []
-    for part in parts:
-        m = re.match(r'<en-media\b', part)
-        if m:
-            hash_match = re.search(r'\bhash="([0-9a-fA-F]+)"', part)
-            if hash_match:
-                att = hash_to_att.get(hash_match.group(1))
-                if att:
-                    segments.append(att)
-                # else: unresolvable hash (e.g. octet-stream filtered out) — skip
-        else:
-            segments.append(part)
-
-    return segments
+    text = re.sub(r"<[^>]+>", " ", enml)
+    return " ".join(text.split())
 
 
 def has_meaningful_text(plain_text: str) -> bool:
@@ -118,15 +70,7 @@ def classify(note: Note) -> ClassifiedNote:
         # no text, 0 attachments → treat as empty text-only doc; also covers multi
         kind = NoteKind.ATTACHMENT_ONLY_MULTI if n_attachments >= 2 else NoteKind.TEXT_ONLY
 
-    # Build ordered interleaved segments when there are inline attachments
-    segments = None
-    if attachments and note.enml:
-        raw_segs = enml_to_segments(note.enml, attachments)
-        # Only use segments when at least one Attachment appears inline
-        if any(isinstance(s, Attachment) for s in raw_segs):
-            segments = raw_segs
-
-    return ClassifiedNote(note=note, kind=kind, plain_text=plain_text, attachments=attachments, segments=segments)
+    return ClassifiedNote(note=note, kind=kind, plain_text=plain_text, attachments=attachments)
 
 
 # ── mime helpers ───────────────────────────────────────────────────────────────

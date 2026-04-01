@@ -1,17 +1,21 @@
 """
 Google Drive/Docs output mode: write notes to Google Drive.
 
-Image embedding uses a 3-phase flow per note:
+Image embedding uses a 2-phase flow per note:
   Phase 1 — Upload all attachments (images + PDFs/other) to the notebook folder.
-             Images also get a public permission so insertInlineImage can fetch them.
-  Phase 2 — Create the Google Doc with one batchUpdate: all text + inline images
-             (using public Drive URLs) + hyperlinks to non-image files.
-  Phase 3 — If policy is 'doc': delete the temp image files (they were only needed
-             for embedding). Non-image files always stay. If policy is 'both': keep all.
+             Images also get a public permission so the Drive HTML importer can
+             fetch them and embed them inline.
+  Phase 2 — Build HTML from the note's ENML (replacing <en-media> tags with
+             <img> or <a> elements), then import it as a Google Doc via Drive's
+             built-in HTML conversion.  Drive handles all formatting (headings,
+             bold, italic, links, RTL) natively.
+  Phase 3 — If policy is 'doc': delete the temp image files (they were only
+             needed for embedding). Non-image files always stay.
 """
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
@@ -20,9 +24,8 @@ from .classifier import (
     _EMBEDDABLE_IMAGE_MIME,
     attachment_label,
     attachment_sibling_filename,
-    enml_to_text,
 )
-from .docs import DocImage, DocLink, _image_size_pt, create_doc
+from .docs import create_doc
 from .drive import (
     _retry,
     drive_url,
@@ -36,6 +39,49 @@ from .parser import Attachment, Note
 
 if TYPE_CHECKING:
     from .migrate import AttachmentPolicy
+
+
+def _enml_to_html(
+    enml: str,
+    hash_to_img_url: dict[str, str],
+    hash_to_link: dict[str, tuple[str, str]],
+    source_url: str | None = None,
+) -> bytes:
+    """
+    Convert ENML to HTML suitable for Drive's import converter.
+
+    - Strips <?xml> declaration and <!DOCTYPE>
+    - Replaces <en-note> wrapper with <div>
+    - Replaces <en-media> with <p><img src="..."/></p> for images, or
+      <p><a href="...">filename</a></p> for other attachments
+    - Prepends a source URL link when present
+    """
+    html = enml.strip()
+    html = re.sub(r"<\?xml[^?]*\?>\s*", "", html)
+    html = re.sub(r"<!DOCTYPE[^>]*>\s*", "", html, flags=re.IGNORECASE)
+    html = re.sub(r"<en-note\b[^>]*>", "<div>", html, count=1)
+    html = html.replace("</en-note>", "</div>")
+
+    def _replace_media(m: re.Match) -> str:
+        tag = m.group(0)
+        h = re.search(r'\bhash="([0-9a-fA-F]+)"', tag)
+        if not h:
+            return ""
+        hash_val = h.group(1)
+        if hash_val in hash_to_img_url:
+            return f'<p style="text-align:center"><img src="{hash_to_img_url[hash_val]}"/></p>'
+        if hash_val in hash_to_link:
+            filename, url = hash_to_link[hash_val]
+            return f'<p><a href="{url}">[{filename}]</a></p>'
+        return ""
+
+    html = re.sub(r"<en-media\b[^>]*/?>", _replace_media, html)
+
+    if source_url:
+        header = f'<p>Source: <a href="{source_url}">{source_url}</a></p>'
+        html = html.replace("<div>", f"<div>{header}", 1)
+
+    return html.encode("utf-8")
 
 
 class GDriveWriter:
@@ -61,17 +107,17 @@ class GDriveWriter:
     def note_exists(self, note: Note, safe_title: str) -> bool:
         return bool(file_exists(self._drive, safe_title, self._notebook_id(note)))
 
-    def write_doc(self, title: str, plain_text: str, attachments: list[Attachment], note: Note, policy: "AttachmentPolicy | None" = None, segments: list | None = None) -> str:
+    def write_doc(self, title: str, plain_text: str, attachments: list[Attachment], note: Note, policy: "AttachmentPolicy | None" = None) -> str:
         policy = policy or self._policy
         parent_id = self._notebook_id(note)
         desc = make_description(note.created, note.source_url)
         mtime = note.updated or note.created
 
-        # Phase 1: upload all attachments and build resolved references
+        # Phase 1: upload all attachments and build URL maps
         counters: dict[str, int] = defaultdict(int)
-        image_file_ids: list[str] = []  # tracked for optional cleanup in Phase 3
-        resolved: list[DocImage | DocLink] = []
-        hash_to_resolved: dict[str, DocImage | DocLink] = {}
+        image_file_ids: list[str] = []
+        hash_to_img_url: dict[str, str] = {}
+        hash_to_link: dict[str, tuple[str, str]] = {}
 
         for att in attachments:
             label = attachment_label(att.mime)
@@ -89,48 +135,23 @@ class GDriveWriter:
             )
 
             if att.mime in _EMBEDDABLE_IMAGE_MIME:
-                # Grant public read access so the Docs API can fetch the image
                 _retry(
                     self._drive.permissions().create(
                         fileId=file_id,
                         body={"role": "reader", "type": "anyone"},
                     ).execute
                 )
-                url = f"https://drive.google.com/uc?export=download&id={file_id}"
-                w_pt, h_pt = _image_size_pt(att.data)
-                img = DocImage(url=url, width_pt=w_pt, height_pt=h_pt)
-                resolved.append(img)
-                hash_to_resolved[att.hash] = img
+                hash_to_img_url[att.hash] = f"https://drive.google.com/uc?export=download&id={file_id}"
                 image_file_ids.append(file_id)
             else:
-                link = DocLink(label=f"[{filename}]", url=drive_url(file_id))
-                resolved.append(link)
-                hash_to_resolved[att.hash] = link
+                hash_to_link[att.hash] = (filename, drive_url(file_id))
 
-        # When segments are available, build an ordered list of text + inline attachments
-        # so images appear at their correct positions instead of all at the end.
-        body_segments: list | None = None
-        if segments is not None and hash_to_resolved:
-            body_segments = []
-            for seg in segments:
-                if isinstance(seg, str):
-                    text = enml_to_text(seg)
-                    if text:
-                        body_segments.append(text)
-                else:  # Attachment
-                    r = hash_to_resolved.get(seg.hash)
-                    if r:
-                        body_segments.append(r)
-
-        # Phase 2: create the doc with a single batchUpdate
+        # Phase 2: build HTML and import as Google Doc
+        html = _enml_to_html(note.enml, hash_to_img_url, hash_to_link, note.source_url)
         doc_id = create_doc(
             self._drive,
-            self._docs,
             title=title,
-            plain_text=plain_text,
-            note=note,
-            resolved_attachments=resolved,
-            body_segments=body_segments,
+            html=html,
             parent_id=parent_id,
             description=desc,
             modified_time=mtime,

@@ -12,7 +12,9 @@
       "Read(//<title>החמישיה הפותחת: המאפיות הטובות בתל אביב<\\\\/title>/,/<\\\\/note>/**)",
       "Read(//<title>החמישיה הפותחת: המאפיות הטובות בתל אביב<\\\\/title>/,/<\\\\/note>/{if \\(/en-media/**)",
       "Bash(perl -pe 's/<[^>]+>//g')",
-      "Bash(python test_html_import.py)"
+      "Bash(python test_html_import.py)",
+      "Bash(python -c \":*)",
+      "Bash(python -c \"import html4docx; import os; print\\(os.path.dirname\\(html4docx.__file__\\)\\)\")"
     ],
     "additionalDirectories": [
       "/Users/moshe/.claude"

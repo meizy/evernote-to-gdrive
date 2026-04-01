@@ -208,7 +208,7 @@ def _migrate_note(note: Note, options: MigrationOptions, writer) -> MigrationRec
             else:
                 has_siblings = _has_doc_siblings(attachments, policy)
                 doc_title = f"{safe_title}_0" if has_siblings else safe_title
-                output = [writer.write_doc(doc_title, "", attachments, note, policy, classified.segments)]
+                output = [writer.write_doc(doc_title, "", attachments, note, policy)]
 
         elif kind == NoteKind.TEXT_WITH_ATTACHMENTS:
             # FILES implies BOTH for text notes: the doc must exist for the text,
@@ -216,7 +216,7 @@ def _migrate_note(note: Note, options: MigrationOptions, writer) -> MigrationRec
             effective = AttachmentPolicy.BOTH if policy == AttachmentPolicy.FILES else policy
             has_siblings = _has_doc_siblings(attachments, effective)
             doc_title = f"{safe_title}_0" if has_siblings else safe_title
-            output = [writer.write_doc(doc_title, plain_text, attachments, note, effective, classified.segments)]
+            output = [writer.write_doc(doc_title, plain_text, attachments, note, effective)]
 
         else:
             raise ValueError(f"Unhandled note kind: {kind}")
