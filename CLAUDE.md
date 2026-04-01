@@ -4,6 +4,7 @@ this project migrates an evernote export to the local file system or to google d
 
 ## requirements
 see the `REQUIREMENTS.md` doc.
+if anything was changed that requires updating the requirements doc, do it automatically.
 
 ## python guidelines
 - no file should exceed 300 lines

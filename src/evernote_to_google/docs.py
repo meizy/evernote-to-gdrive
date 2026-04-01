@@ -11,11 +11,14 @@ Strategy:
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from googleapiclient.http import MediaInMemoryUpload
 
 from .drive import _retry
+
+_log = logging.getLogger(__name__)
 
 
 def create_doc(
@@ -40,12 +43,15 @@ def create_doc(
     if modified_time:
         metadata["modifiedTime"] = modified_time.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
+    _log.debug("going to create gdoc %r (files.create)", title)
     media = MediaInMemoryUpload(html, mimetype="text/html", resumable=False)
     file = _retry(drive.files().create(body=metadata, media_body=media, fields="id").execute)
     doc_id = file["id"]
+    _log.debug("gdoc %r created successfully (id: %s)", title, doc_id)
 
     # Drive resets modifiedTime during import — patch it back (best-effort).
     if modified_time:
+        _log.debug("going to restore modifiedTime for doc %s (files.update)", doc_id)
         _retry(
             drive.files()
             .update(
@@ -55,5 +61,6 @@ def create_doc(
             )
             .execute
         )
+        _log.debug("modifiedTime restored for doc %s", doc_id)
 
     return doc_id

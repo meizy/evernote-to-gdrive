@@ -4,6 +4,7 @@ CLI entry point for evernote-to-gdrive.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import click
@@ -64,8 +65,6 @@ def analyze(input: Path, output_json: Path | None, mime: str | None, findnote: s
               help="Only migrate this notebook (repeatable).")
 @click.option("--note", default=None,
               help="Only migrate the note with this exact title (--notebook must also be specified).")
-@click.option("--skip-existing", is_flag=True, default=False,
-              help="Skip notes whose output file already exists in the target folder.")
 @click.option("--attachments",
               type=click.Choice(["doc", "files", "both"], case_sensitive=False),
               default="doc", show_default=True,
@@ -78,6 +77,8 @@ def analyze(input: Path, output_json: Path | None, mime: str | None, findnote: s
               help="Write migration log (CSV) to this file.")
 @click.option("--verbose", is_flag=True, default=False,
               help="Print a line for each note instead of a progress bar.")
+@click.option("--debug", is_flag=True, default=False,
+              help="Enable debug logging of Google API calls.")
 def migrate(
     input: Path,
     output_mode: str,
@@ -86,12 +87,24 @@ def migrate(
     stacks: tuple[str, ...],
     notebooks: tuple[str, ...],
     note: str | None,
-    skip_existing: bool,
     attachments: str,
     log_file: Path,
     verbose: bool,
+    debug: bool,
 ):
     """Migrate Evernote notes to Google Drive (gdrive) or a local folder (local)."""
+    if debug:
+        handler = logging.StreamHandler()
+        fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+        fmt.formatTime = lambda record, datefmt=None: (  # type: ignore[method-assign]
+            __import__("datetime").datetime.fromtimestamp(record.created).strftime("%H:%M:%S.") +
+            f"{int(record.msecs):03d}"
+        )
+        handler.setFormatter(fmt)
+        pkg_log = logging.getLogger("evernote_to_google")
+        pkg_log.setLevel(logging.DEBUG)
+        pkg_log.addHandler(handler)
+
     if note and not notebooks:
         raise click.UsageError("--note requires --notebook to be specified.")
     mode = OutputMode(output_mode.lower())
@@ -100,13 +113,12 @@ def migrate(
         output_mode=mode,
         dest=dest,
         dry_run=dry_run,
-        skip_existing=skip_existing,
         stacks=list(stacks),
         notebooks=list(notebooks),
         note=note,
         attachments=AttachmentPolicy(attachments.lower()),
         log_file=log_file,
-        verbose=verbose,
+        verbose=verbose or debug,
     )
 
     if mode == OutputMode.GOOGLE:

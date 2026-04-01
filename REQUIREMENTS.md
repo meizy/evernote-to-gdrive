@@ -195,7 +195,6 @@ evernote-to-gdrive migrate INPUT [OPTIONS]
   --dry-run                  Authenticate and create root Drive folder only (gdrive mode only)
   --stack TEXT               Only migrate notebooks in this stack (repeatable)
   --notebook TEXT            Only migrate this notebook (repeatable)
-  --skip-existing            Skip notes whose output file already exists in the target folder
   --attachments [doc|files|both]  How to handle attachments [default: doc]
   --log-file PATH            Write migration log (CSV) [default: migration.log]
 ```
@@ -229,7 +228,7 @@ Google Drive and Google Docs APIs have **separate, independent quotas**. Drive A
 
 This applies to both Drive and Docs API calls.
 
-**Resuming with `--skip-existing`** — if a migration run is interrupted (e.g. quota exhausted for the day), rerunning with `--skip-existing` allows resuming without re-uploading completed notes. This is an important quota-conservation mechanism. To keep the skip check itself parsimonious, existing files in each target folder must be fetched in a single `files.list` call (with the folder ID as parent) rather than issuing one lookup per note. The result is cached in memory for the duration of the run.
+**Resuming interrupted runs** — existing notes are always skipped (never duplicated). If a migration run is interrupted (e.g. quota exhausted for the day), rerunning will resume without re-uploading completed notes. This is an important quota-conservation mechanism. To keep the skip check itself parsimonious, existing files in each target folder must be fetched in a single `files.list` call (with the folder ID as parent) rather than issuing one lookup per note. The result is cached in memory for the duration of the run.
 
 ## Error Handling
 

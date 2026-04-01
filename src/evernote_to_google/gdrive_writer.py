@@ -15,9 +15,12 @@ Image embedding uses a 2-phase flow per note:
 
 from __future__ import annotations
 
+import logging
 import re
 from collections import defaultdict
 from typing import TYPE_CHECKING
+
+_log = logging.getLogger(__name__)
 
 from .auth import get_services
 from .classifier import (
@@ -28,6 +31,8 @@ from .classifier import (
 from .docs import create_doc
 from .drive import (
     _retry,
+    batch_delete_files,
+    batch_set_permissions,
     drive_url,
     ensure_folder_path,
     file_exists,
@@ -109,6 +114,7 @@ class GDriveWriter:
 
     def write_doc(self, title: str, plain_text: str, attachments: list[Attachment], note: Note, policy: "AttachmentPolicy | None" = None) -> str:
         policy = policy or self._policy
+        _log.debug("going to write note %r as gdoc (%d attachments)", title, len(attachments))
         parent_id = self._notebook_id(note)
         desc = make_description(note.created, note.source_url)
         mtime = note.updated or note.created
@@ -135,16 +141,25 @@ class GDriveWriter:
             )
 
             if att.mime in _EMBEDDABLE_IMAGE_MIME:
-                _retry(
-                    self._drive.permissions().create(
-                        fileId=file_id,
-                        body={"role": "reader", "type": "anyone"},
-                    ).execute
-                )
                 hash_to_img_url[att.hash] = f"https://drive.google.com/uc?export=download&id={file_id}"
                 image_file_ids.append(file_id)
             else:
                 hash_to_link[att.hash] = (filename, drive_url(file_id))
+
+        # Phase 1b: set public permissions on images
+        if len(image_file_ids) > 2:
+            _log.debug("batch-setting permissions on %d images", len(image_file_ids))
+            batch_set_permissions(self._drive, image_file_ids)
+        else:
+            for fid in image_file_ids:
+                _log.debug("going to make image file %s public (permissions.create)", fid)
+                _retry(
+                    self._drive.permissions().create(
+                        fileId=fid,
+                        body={"role": "reader", "type": "anyone"},
+                    ).execute
+                )
+                _log.debug("image file %s made public", fid)
 
         # Phase 2: build HTML and import as Google Doc
         html = _enml_to_html(note.enml, hash_to_img_url, hash_to_link, note.source_url)
@@ -158,13 +173,20 @@ class GDriveWriter:
         )
 
         # Phase 3: delete temp image files if policy is 'doc'
-        if policy == "doc":
-            for fid in image_file_ids:
-                _retry(self._drive.files().delete(fileId=fid).execute)
+        if policy == "doc" and image_file_ids:
+            if len(image_file_ids) > 2:
+                _log.debug("batch-deleting %d temp image files", len(image_file_ids))
+                batch_delete_files(self._drive, image_file_ids)
+            else:
+                for fid in image_file_ids:
+                    _log.debug("going to delete temp image file %s (files.delete)", fid)
+                    _retry(self._drive.files().delete(fileId=fid).execute)
+                    _log.debug("temp image file %s deleted", fid)
 
         return doc_id
 
     def write_raw_file(self, name: str, data: bytes, mime_type: str, note: Note) -> str:
+        _log.debug("going to write note %r as raw file [%s]", name, mime_type)
         return upload_file(
             self._drive,
             name=name,

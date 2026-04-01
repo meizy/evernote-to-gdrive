@@ -5,9 +5,11 @@ Migration orchestration: classify notes and dispatch to Drive/Docs or local fold
 from __future__ import annotations
 
 import csv
+import itertools
 import shutil
 import sys
 import tempfile
+import time
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
@@ -63,7 +65,6 @@ class MigrationOptions:
     output_mode: OutputMode
     dest: str          # Drive folder path (gdrive), local output dir (local), or "null"
     dry_run: bool
-    skip_existing: bool
     notebooks: list[str]          # empty = all
     stacks: list[str]             # empty = all
     note: str | None              # if set, only migrate this one note title
@@ -126,14 +127,26 @@ def run_migration(input_path: Path, options: MigrationOptions) -> list[Migration
 
     try:
         if options.verbose:
-            for note in notes:
-                record = _migrate_note(note=note, options=options, writer=writer)
-                records.append(record)
-                label = f"[cyan]{note.notebook}[/] / {note.title}"
-                if record.status == MigrationStatus.SKIPPED:
-                    console.print(f"{label} - skipped")
-                else:
-                    console.print(label)
+            gdrive = options.output_mode == OutputMode.GOOGLE
+            for notebook, group in itertools.groupby(notes, key=lambda n: n.notebook):
+                nb_start = time.monotonic()
+                nb_count = 0
+                for note in group:
+                    t0 = time.monotonic()
+                    record = _migrate_note(note=note, options=options, writer=writer)
+                    elapsed = time.monotonic() - t0
+                    records.append(record)
+                    nb_count += 1
+                    label = f"[cyan]{note.notebook}[/] / {note.title}"
+                    if record.status == MigrationStatus.SKIPPED:
+                        console.print(f"{label} - skipped")
+                    elif gdrive:
+                        console.print(f"{label} ({elapsed:.1f}s)")
+                    else:
+                        console.print(label)
+                if gdrive:
+                    nb_elapsed = time.monotonic() - nb_start
+                    console.print(f"  [dim]{notebook}: {nb_elapsed:.1f}s total ({nb_count} notes)")
         else:
             with Progress(
                 TextColumn("[progress.description]{task.description}", table_column=Column(width=55, no_wrap=True)),
@@ -175,7 +188,7 @@ def _migrate_note(note: Note, options: MigrationOptions, writer) -> MigrationRec
     safe_title = _safe_name(note.title)
 
     try:
-        if options.skip_existing and writer.note_exists(note, safe_title):
+        if writer.note_exists(note, safe_title):
             return MigrationRecord(
                 notebook=note.notebook, title=note.title, kind=kind_label,
                 status=MigrationStatus.SKIPPED, output=[],

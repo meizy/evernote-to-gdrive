@@ -5,6 +5,7 @@ Google Drive API operations: folder management and file uploads.
 from __future__ import annotations
 
 import io
+import logging
 import re
 import time
 from datetime import datetime
@@ -12,6 +13,8 @@ from typing import Any
 
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
+
+_log = logging.getLogger(__name__)
 
 # Max retries for rate-limit / transient errors
 _MAX_RETRIES = 5
@@ -27,6 +30,10 @@ def _retry(fn, *args, **kwargs):
         except HttpError as exc:
             if exc.status_code not in _RETRY_STATUS or attempt == _MAX_RETRIES - 1:
                 raise
+            _log.debug(
+                "API error %s — retrying in %.0fs (attempt %d/%d)",
+                exc.status_code, delay, attempt + 1, _MAX_RETRIES,
+            )
             time.sleep(delay)
             delay *= 2
     # unreachable
@@ -41,13 +48,16 @@ def get_or_create_folder(drive, name: str, parent_id: str | None = None) -> str:
     if parent_id:
         q += f" and '{parent_id}' in parents"
 
+    _log.debug("going to query folder %r in parent %s (files.list)", name, parent_id or "root")
     resp = _retry(
         drive.files().list(q=q, fields="files(id, name)", spaces="drive").execute
     )
     files = resp.get("files", [])
     if files:
+        _log.debug("folder %r found (id: %s)", name, files[0]["id"])
         return files[0]["id"]
 
+    _log.debug("going to create folder %r (files.create)", name)
     metadata: dict[str, Any] = {
         "name": name,
         "mimeType": "application/vnd.google-apps.folder",
@@ -58,6 +68,7 @@ def get_or_create_folder(drive, name: str, parent_id: str | None = None) -> str:
     folder = _retry(
         drive.files().create(body=metadata, fields="id").execute
     )
+    _log.debug("folder %r created (id: %s)", name, folder["id"])
     return folder["id"]
 
 
@@ -108,12 +119,14 @@ def upload_file(
     if modified_time:
         metadata["modifiedTime"] = modified_time.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
+    _log.debug("going to upload file %r [%s, %s bytes] (files.create)", name, mime_type, f"{len(data):,}")
     media = MediaIoBaseUpload(io.BytesIO(data), mimetype=mime_type, resumable=True)
     file = _retry(
         drive.files()
         .create(body=metadata, media_body=media, fields="id")
         .execute
     )
+    _log.debug("file %r uploaded (id: %s)", name, file["id"])
     return file["id"]
 
 
@@ -123,11 +136,14 @@ def file_exists(drive, name: str, parent_id: str) -> str | None:
         f"name = {_quote(name)} and '{parent_id}' in parents"
         " and trashed = false"
     )
+    _log.debug("going to check if file %r exists in folder %s (files.list)", name, parent_id)
     resp = _retry(
         drive.files().list(q=q, fields="files(id)", spaces="drive").execute
     )
     files = resp.get("files", [])
-    return files[0]["id"] if files else None
+    result = files[0]["id"] if files else None
+    _log.debug("file %r %s", name, f"found (id: {result})" if result else "not found")
+    return result
 
 
 def make_description(note_created: datetime | None, source_url: str | None) -> str:
@@ -145,6 +161,54 @@ def drive_url(file_id: str) -> str:
 
 def doc_url(file_id: str) -> str:
     return f"https://docs.google.com/document/d/{file_id}/edit"
+
+
+# ── batch operations ──────────────────────────────────────────────────────────
+
+def batch_set_permissions(drive, file_ids: list[str]) -> None:
+    """
+    Set 'anyone reader' permission on all file_ids in a single batch request.
+    Individual failures are logged as warnings but do not raise.
+    Note: Drive batch requests support up to 100 sub-requests.
+    """
+    errors: dict[str, str] = {}
+
+    def _cb(request_id: str, response, exception) -> None:
+        if exception:
+            errors[request_id] = str(exception)
+
+    batch = drive.new_batch_http_request(callback=_cb)
+    for fid in file_ids:
+        batch.add(
+            drive.permissions().create(
+                fileId=fid,
+                body={"role": "reader", "type": "anyone"},
+            ),
+            request_id=fid,
+        )
+    batch.execute()
+    for fid, err in errors.items():
+        _log.warning("batch permission failed for %s: %s", fid, err)
+
+
+def batch_delete_files(drive, file_ids: list[str]) -> None:
+    """
+    Delete all file_ids in a single batch request (best-effort cleanup).
+    Individual failures are logged as warnings but do not raise.
+    Note: Drive batch requests support up to 100 sub-requests.
+    """
+    errors: dict[str, str] = {}
+
+    def _cb(request_id: str, response, exception) -> None:
+        if exception:
+            errors[request_id] = str(exception)
+
+    batch = drive.new_batch_http_request(callback=_cb)
+    for fid in file_ids:
+        batch.add(drive.files().delete(fileId=fid), request_id=fid)
+    batch.execute()
+    for fid, err in errors.items():
+        _log.warning("batch delete failed for %s: %s", fid, err)
 
 
 # ── internal ──────────────────────────────────────────────────────────────────

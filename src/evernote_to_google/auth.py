@@ -16,8 +16,11 @@ while the app remains in 'Testing' publishing status.
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -81,4 +84,5 @@ def get_services() -> tuple:
     creds = _load_or_refresh_credentials()
     drive = build("drive", "v3", credentials=creds)
     docs = build("docs", "v1", credentials=creds)
+    _log.debug("authenticated successfully")
     return drive, docs
