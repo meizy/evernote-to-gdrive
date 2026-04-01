@@ -35,8 +35,8 @@ from .drive import (
     batch_set_permissions,
     drive_url,
     ensure_folder_path,
-    file_exists,
     get_or_create_folder_path,
+    list_folder_files,
     make_description,
     upload_file,
 )
@@ -95,6 +95,7 @@ class GDriveWriter:
         self._dest = dest
         self._policy = policy
         self._folder_cache: dict[str, tuple[str, str]] = {}
+        self._file_cache: dict[str, set[str]] = {}  # notebook_id -> set of file names
 
     def dry_run(self) -> str:
         """Create only the root Drive folder. Returns its ID."""
@@ -106,11 +107,14 @@ class GDriveWriter:
             self._folder_cache[cache_key] = ensure_folder_path(
                 self._drive, self._dest, note.notebook, stack=note.stack
             )
+            _, notebook_id = self._folder_cache[cache_key]
+            self._file_cache[notebook_id] = list_folder_files(self._drive, notebook_id)
         _, notebook_id = self._folder_cache[cache_key]
         return notebook_id
 
     def note_exists(self, note: Note, safe_title: str) -> bool:
-        return bool(file_exists(self._drive, safe_title, self._notebook_id(note)))
+        notebook_id = self._notebook_id(note)
+        return safe_title in self._file_cache.get(notebook_id, set())
 
     def write_doc(self, title: str, plain_text: str, attachments: list[Attachment], note: Note, policy: "AttachmentPolicy | None" = None) -> str:
         policy = policy or self._policy

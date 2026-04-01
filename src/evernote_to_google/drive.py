@@ -146,6 +146,26 @@ def file_exists(drive, name: str, parent_id: str) -> str | None:
     return result
 
 
+def list_folder_files(drive, parent_id: str) -> set[str]:
+    """Return the set of all file names in parent_id (non-trashed, paginated)."""
+    _log.debug("going to list all files in folder %s (files.list)", parent_id)
+    q = f"'{parent_id}' in parents and trashed = false"
+    names: set[str] = set()
+    page_token: str | None = None
+    while True:
+        kwargs: dict = dict(q=q, fields="nextPageToken, files(name)", spaces="drive", pageSize=1000)
+        if page_token:
+            kwargs["pageToken"] = page_token
+        resp = _retry(drive.files().list(**kwargs).execute)
+        for f in resp.get("files", []):
+            names.add(f["name"])
+        page_token = resp.get("nextPageToken")
+        if not page_token:
+            break
+    _log.debug("folder %s contains %d files", parent_id, len(names))
+    return names
+
+
 def make_description(note_created: datetime | None, source_url: str | None) -> str:
     parts: list[str] = []
     if note_created:

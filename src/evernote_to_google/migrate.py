@@ -187,8 +187,22 @@ def _migrate_note(note: Note, options: MigrationOptions, writer) -> MigrationRec
     kind_label = classified.kind.name.lower()
     safe_title = _safe_name(note.title)
 
+    # Web-clipped notes have a source_url. Force doc policy to avoid
+    # producing many junk sibling files from page images.
+    policy = AttachmentPolicy.DOC if note.source_url else options.attachments
+
     try:
-        if writer.note_exists(note, safe_title):
+        # For attachment-only-multi with FILES policy, files are stored under
+        # sibling filenames, not safe_title — check the first one instead.
+        if (classified.kind == NoteKind.ATTACHMENT_ONLY_MULTI
+                and policy == AttachmentPolicy.FILES
+                and classified.attachments):
+            att0 = classified.attachments[0]
+            check_name = attachment_sibling_filename(note.title, attachment_label(att0.mime), 1, att0)
+        else:
+            check_name = safe_title
+
+        if writer.note_exists(note, check_name):
             return MigrationRecord(
                 notebook=note.notebook, title=note.title, kind=kind_label,
                 status=MigrationStatus.SKIPPED, output=[],
@@ -197,10 +211,6 @@ def _migrate_note(note: Note, options: MigrationOptions, writer) -> MigrationRec
         kind = classified.kind
         attachments = classified.attachments
         plain_text = classified.plain_text
-
-        # Web-clipped notes have a source_url. Force doc policy to avoid
-        # producing many junk sibling files from page images.
-        policy = AttachmentPolicy.DOC if note.source_url else options.attachments
 
         if kind == NoteKind.TEXT_ONLY:
             output = [writer.write_doc(safe_title, plain_text, [], note)]
