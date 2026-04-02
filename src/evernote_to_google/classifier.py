@@ -103,6 +103,7 @@ _MIME_EXT_MAP: dict[str, str] = {
     "audio/mp4": ".m4a",
     "audio/x-m4a": ".m4a",
     "audio/aac": ".aac",
+    "audio/amr": ".amr",
     "video/mp4": ".mp4",
     "video/quicktime": ".mov",
     "video/x-msvideo": ".avi",
@@ -202,4 +203,4 @@ def _is_rtl(text: str) -> bool:
 
 
 # Supported MIME types for inline image embedding
-_EMBEDDABLE_IMAGE_MIME = {"image/jpeg", "image/png", "image/gif"}
+_EMBEDDABLE_IMAGE_MIME = {"image/jpeg", "image/png", "image/gif", "image/webp"}
