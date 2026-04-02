@@ -178,6 +178,8 @@ class LocalWriter:
 
     def note_exists(self, note: Note, safe_title: str) -> bool:
         folder = note_folder(self._output_dir, note)
+        if Path(safe_title).suffix:
+            return (folder / safe_title).exists()
         return any(folder.glob(f"{safe_title}.*")) or any(folder.glob(f"{safe_title}_0.*"))
 
     def write_doc(self, title: str, plain_text: str, attachments: list[Attachment], note: Note, policy: "AttachmentPolicy | None" = None) -> str:
