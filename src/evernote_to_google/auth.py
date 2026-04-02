@@ -1,5 +1,5 @@
 """
-Google OAuth 2.0 authentication for Drive and Docs APIs.
+Google OAuth 2.0 authentication for the Drive API.
 
 On first run the user is sent through a browser-based consent flow.
 The resulting token is cached at ~/.config/evernote-to-gdrive/token.json
@@ -29,7 +29,6 @@ from googleapiclient.discovery import build
 
 SCOPES = [
     "https://www.googleapis.com/auth/drive",
-    "https://www.googleapis.com/auth/documents",
 ]
 
 CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / ".config"
@@ -57,7 +56,7 @@ def _load_or_refresh_credentials() -> Credentials:
             f"\nError: OAuth client secrets file not found at:\n  {CLIENT_SECRETS}\n\n"
             "To set up authentication:\n"
             "  1. Go to https://console.cloud.google.com/\n"
-            "  2. Create a project and enable the Drive API and Docs API\n"
+            "  2. Create a project and enable the Drive API\n"
             "  3. Create OAuth 2.0 credentials (Desktop application)\n"
             f"  4. Download and save as: {CLIENT_SECRETS}\n"
             "  5. In the OAuth consent screen, add your Google account as a test user\n"
@@ -79,10 +78,9 @@ def _save_token(creds: Credentials) -> None:
     TOKEN_FILE.write_text(creds.to_json())
 
 
-def get_services() -> tuple:
-    """Return (drive_service, docs_service) authenticated API clients."""
+def get_services():
+    """Return an authenticated Drive API client."""
     creds = _load_or_refresh_credentials()
     drive = build("drive", "v3", credentials=creds)
-    docs = build("docs", "v1", credentials=creds)
     _log.debug("authenticated successfully")
-    return drive, docs
+    return drive

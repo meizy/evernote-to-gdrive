@@ -22,7 +22,7 @@ TEST_FOLDER_NAME = "html-import-test"
 
 
 def main():
-    drive, _ = get_services()
+    drive = get_services()
 
     # 1. Create a temporary test folder
     folder = drive.files().create(

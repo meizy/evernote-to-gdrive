@@ -91,7 +91,7 @@ def _enml_to_html(
 
 class GDriveWriter:
     def __init__(self, dest: str, policy: "AttachmentPolicy") -> None:
-        self._drive, self._docs = get_services()
+        self._drive = get_services()
         self._dest = dest
         self._policy = policy
         self._folder_cache: dict[str, tuple[str, str]] = {}
