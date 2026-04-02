@@ -214,7 +214,7 @@ class GDriveWriter:
         return doc_id
 
     def write_raw_file(self, name: str, data: bytes, mime_type: str, note: Note) -> str:
-        _log.debug("going to write note %r as raw file [%s]", name, mime_type)
+        _log.debug("going to write note %r as raw file [%s]", rtl_display(name), mime_type)
         return upload_file(
             self._drive,
             name=name,

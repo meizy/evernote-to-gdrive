@@ -14,6 +14,8 @@ from typing import Any
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
 
+from .display import rtl_display
+
 _log = logging.getLogger(__name__)
 
 # Max retries for rate-limit / transient errors
@@ -114,16 +116,16 @@ def get_or_create_folder(drive, name: str, parent_id: str | None = None) -> str:
     if parent_id:
         q += f" and '{parent_id}' in parents"
 
-    _log.debug("going to query folder %r in parent %s (files.list)", name, parent_id or "root")
+    _log.debug("going to query folder %r in parent %s (files.list)", rtl_display(name), parent_id or "root")
     resp = _retry(
         drive.files().list(q=q, fields="files(id, name)", spaces="drive").execute
     )
     files = resp.get("files", [])
     if files:
-        _log.debug("folder %r found (id: %s)", name, files[0]["id"])
+        _log.debug("folder %r found (id: %s)", rtl_display(name), files[0]["id"])
         return files[0]["id"]
 
-    _log.debug("going to create folder %r (files.create)", name)
+    _log.debug("going to create folder %r (files.create)", rtl_display(name))
     metadata: dict[str, Any] = {
         "name": name,
         "mimeType": "application/vnd.google-apps.folder",
@@ -134,7 +136,7 @@ def get_or_create_folder(drive, name: str, parent_id: str | None = None) -> str:
     folder = _write_retry(
         drive.files().create(body=metadata, fields="id").execute
     )
-    _log.debug("folder %r created (id: %s)", name, folder["id"])
+    _log.debug("folder %r created (id: %s)", rtl_display(name), folder["id"])
     return folder["id"]
 
 
@@ -185,7 +187,7 @@ def upload_file(
     if modified_time:
         metadata["modifiedTime"] = modified_time.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
-    _log.debug("going to upload file %r [%s, %s bytes] (files.create)", name, mime_type, f"{len(data):,}")
+    _log.debug("going to upload file %r [%s, %s bytes] (files.create)", rtl_display(name), mime_type, f"{len(data):,}")
     media = MediaIoBaseUpload(io.BytesIO(data), mimetype=mime_type, resumable=True)
     file = _write_retry(
         drive.files()
@@ -193,7 +195,7 @@ def upload_file(
         .execute
     )
     add_bytes_uploaded(len(data))
-    _log.debug("file %r uploaded (id: %s)", name, file["id"])
+    _log.debug("file %r uploaded (id: %s)", rtl_display(name), file["id"])
     return file["id"]
 
 
@@ -203,13 +205,13 @@ def file_exists(drive, name: str, parent_id: str) -> str | None:
         f"name = {_quote(name)} and '{parent_id}' in parents"
         " and trashed = false"
     )
-    _log.debug("going to check if file %r exists in folder %s (files.list)", name, parent_id)
+    _log.debug("going to check if file %r exists in folder %s (files.list)", rtl_display(name), parent_id)
     resp = _retry(
         drive.files().list(q=q, fields="files(id)", spaces="drive").execute
     )
     files = resp.get("files", [])
     result = files[0]["id"] if files else None
-    _log.debug("file %r %s", name, f"found (id: {result})" if result else "not found")
+    _log.debug("file %r %s", rtl_display(name), f"found (id: {result})" if result else "not found")
     return result
 
 
