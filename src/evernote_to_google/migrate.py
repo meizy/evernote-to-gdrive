@@ -178,7 +178,7 @@ def run_migration(input_path: Path, options: MigrationOptions) -> list[Migration
 
     if options.log_file:
         _write_log(records, options.log_file)
-    _print_summary(records)
+    _print_summary(records, notes, is_gdrive=options.output_mode == OutputMode.GOOGLE)
     return records
 
 
@@ -286,21 +286,29 @@ def _write_log(records: list[MigrationRecord], log_file: Path) -> None:
             writer.writerow([r.notebook, r.title, r.kind, r.status.value, "|".join(r.output), r.error])
 
 
-def _print_summary(records: list[MigrationRecord]) -> None:
+def _print_summary(records: list[MigrationRecord], notes: list, is_gdrive: bool) -> None:
     total = len(records)
     success = sum(1 for r in records if r.status == MigrationStatus.SUCCESS)
     skipped = sum(1 for r in records if r.status == MigrationStatus.SKIPPED)
     errors = sum(1 for r in records if r.status == MigrationStatus.ERROR)
+    num_stacks = len({n.stack for n in notes if n.stack})
+    num_notebooks = len({n.notebook for n in notes})
 
     console.print()
     console.rule("[bold]Migration Summary")
-    console.print(f"  Total:   {total}")
-    console.print(f"  [green]Success: {success}")
+    if num_stacks:
+        console.print(f"  Stacks:    {num_stacks}")
+    console.print(f"  Notebooks: {num_notebooks}")
+    console.print(f"  Notes:     {total}")
+    console.print(f"  [green]Success:   {success}")
     if skipped:
-        console.print(f"  [yellow]Skipped: {skipped}")
+        console.print(f"  [yellow]Skipped:   {skipped}")
     if errors:
-        console.print(f"  [red]Errors:  {errors}[/]")
+        console.print(f"  [red]Errors:    {errors}[/]")
         for r in records:
             if r.status == MigrationStatus.ERROR:
                 _eprint(f"  - {rtl_display(r.notebook)}/{rtl_display(r.title)}: {r.error}")
+    if is_gdrive:
+        mb = get_bytes_uploaded() / (1024 * 1024)
+        console.print(f"  Uploaded:  ~{mb:.1f} MB (estimate)")
     console.print()

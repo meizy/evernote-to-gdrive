@@ -189,7 +189,7 @@ evernote-to-gdrive migrate INPUT [OPTIONS]
 
 - Console progress bar per note (via `rich`)
 - Log file records: note title, notebook, classification, Drive file ID(s), status (success / skipped / error)
-- Final summary: total notes, counts per category, total uploaded size, errors
+- Final summary: stacks, notebooks, total notes, success/skipped/errors, estimated uploaded size (gdrive only)
 
 ## Google API Usage
 
@@ -215,7 +215,7 @@ Existing notes are never re-uploaded. If a run is interrupted, rerunning resumes
 
 ## Error Handling
 
-- **Duplicate filenames**: append `(2)`, `(3)`, etc.
+- **Duplicate note titles**: local mode appends ` (2)`, ` (3)`, etc. to avoid filesystem collisions; Google Drive allows multiple files with the same name so duplicates are kept as-is.
 - **Unsupported attachment types**: upload as-is with original MIME type; log a warning
 - **API rate limits**: exponential backoff with retry (max 5 attempts) — see Google API Usage above
 - **Partial failures**: continue migration; report failed notes at the end without halting the run
