@@ -53,7 +53,7 @@ def reset_throttle_sleep_total() -> None:
 def log_throttle_summary(notebook: str, nb_elapsed: float) -> None:
     _log.debug(
         "%s: throttle sleep %.1fs / %.1fs total (%.0f%%)",
-        notebook, _throttle_sleep_total, nb_elapsed,
+        rtl_display(notebook), _throttle_sleep_total, nb_elapsed,
         100 * _throttle_sleep_total / nb_elapsed if nb_elapsed else 0,
     )
 
