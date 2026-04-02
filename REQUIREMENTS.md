@@ -35,7 +35,7 @@ Web-clipped notes (those with a source URL) always use `doc` policy regardless o
 
 | Flag value | Behavior |
 |---|---|
-| `doc` *(default)* | Embed images inline in the doc; upload PDFs/other as sibling files and link them. |
+| `doc` *(default)* | Embed images inline in the doc; upload non-image attachments (PDF, audio, video, Office docs, etc.) as sibling files and link them. |
 | `files` | One raw sibling file per attachment, named `<title>_<label>_<n>.<ext>`. For text+attachment notes, the doc is also created and all attachments are kept as siblings (same as `both`). |
 | `both` | Embed images inline in the doc AND keep all attachments as sibling files. |
 
@@ -62,9 +62,9 @@ When a doc has sibling files, the doc itself is named `<title>_0` (e.g. `My Note
 
 ### Image embedding in Google Docs
 
-JPEG, PNG, and GIF images are embedded inline in the Google Doc. A maximum of 100 images are embedded per note; any beyond that are skipped with a warning.
+Image files are embedded inline in the Google Doc. Supported formats: JPEG, PNG, GIF, and WebP. SVG is not embedded (no inline SVG support in Google Docs) and is handled as a sibling file instead. A maximum of 100 images are embedded per note; any beyond that are skipped with a warning.
 
-PDF attachments are uploaded as sibling Drive files and linked from the doc with a clearly labelled hyperlink.
+Non-image attachments (such as PDF, audio, video, Office documents) are uploaded as sibling Drive files and linked from the doc with a clearly labelled hyperlink.
 
 ## Notebook → Folder Mapping
 
@@ -98,7 +98,7 @@ The stack name is derived from the subdirectory name in the `evernote-backup` ex
 | Notebook | Folder name |
 | Stack | Parent folder |
 | Content | Converted to plain text body |
-| Attachments | Images embedded inline; PDFs uploaded/written separately and linked |
+| Attachments | Images embedded inline; non-image attachments uploaded/written separately and linked |
 | Source URL | Inserted as first line of document body |
 | Updated date | File `mtime` (local) / `modifiedTime` on Drive file (google); falls back to `created` if absent |
 
@@ -141,7 +141,7 @@ Output (to console and optionally a JSON file):
 - Total note count
 - Per-notebook note counts
 - Classification breakdown: attachment-only / text+attachment / text-only
-- Attachment counts by type (JPEG, PNG, PDF, other)
+- Attachment counts by type (image, PDF, audio, video, other)
 - Total attachment size (MB), largest single attachment
 - Notes with multiple attachments (count)
 - Any notes that would be skipped or need manual review (e.g. encrypted sections)
@@ -156,7 +156,7 @@ Uses OAuth 2.0. Credentials stored locally in `.config/` under the project direc
 
 ### `google` (default)
 
-Uploads directly to Google Drive. Creates Google Docs for text notes; embeds images inline; uploads PDF attachments as separate Drive files and inserts clickable links into the Doc.
+Uploads directly to Google Drive. Creates Google Docs for text notes; embeds images inline; uploads non-image attachments (PDF, audio, video, etc.) as separate Drive files and inserts clickable links into the Doc.
 
 ### `local`
 
@@ -165,11 +165,11 @@ Writes notes to a local folder tree on disk (mirroring the stack/notebook hierar
 | Note type | Local output |
 |---|---|
 | Attachment-only, single | Raw file (`<title>.<ext>`) |
-| Attachment-only, multi (`--attachments=doc`) | `<title>_0.docx` (if any siblings) with images embedded inline; PDFs/other written as sibling files (`<title>_pdf_1.pdf` etc.) and linked in the doc |
+| Attachment-only, multi (`--attachments=doc`) | `<title>_0.docx` (if any siblings) with images embedded inline; non-image attachments written as sibling files (`<title>_pdf_1.pdf`, `<title>_aud_1.m4a`, etc.) and linked in the doc |
 | Attachment-only, multi (`--attachments=files`) | One raw sibling file per attachment (`<title>_img_1.jpg`, `<title>_pdf_1.pdf`, etc.) |
 | Attachment-only, multi (`--attachments=both`) | `<title>_0.docx` with images embedded AND all attachments kept as sibling files |
 | Text-only | `<title>.docx` |
-| Text + attachments (`--attachments=doc`) | `<title>_0.docx` with images embedded inline; PDFs/other as sibling files linked in the doc |
+| Text + attachments (`--attachments=doc`) | `<title>_0.docx` with images embedded inline; non-image attachments as sibling files linked in the doc |
 | Text + attachments (`--attachments=files` or `both`) | `<title>_0.docx` with images embedded inline; all attachments also kept as sibling files |
 
 RTL text (Hebrew, Arabic) is rendered correctly in all output formats.
