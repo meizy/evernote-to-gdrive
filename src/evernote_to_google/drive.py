@@ -258,6 +258,12 @@ def batch_set_permissions(drive, file_ids: list[str]) -> None:
     Individual failures are logged as warnings but do not raise.
     Note: Drive batch requests support up to 100 sub-requests.
     """
+    if len(file_ids) > 100:
+        _log.warning(
+            "batch_set_permissions: %d items exceed the 100-request limit — truncating; %d items will be skipped",
+            len(file_ids), len(file_ids) - 100,
+        )
+        file_ids = file_ids[:100]
     errors: dict[str, str] = {}
 
     def _cb(request_id: str, response, exception) -> None:
@@ -285,6 +291,12 @@ def batch_delete_files(drive, file_ids: list[str]) -> None:
     Individual failures are logged as warnings but do not raise.
     Note: Drive batch requests support up to 100 sub-requests.
     """
+    if len(file_ids) > 100:
+        _log.warning(
+            "batch_delete_files: %d items exceed the 100-request limit — truncating; %d items will be skipped",
+            len(file_ids), len(file_ids) - 100,
+        )
+        file_ids = file_ids[:100]
     errors: dict[str, str] = {}
 
     def _cb(request_id: str, response, exception) -> None:

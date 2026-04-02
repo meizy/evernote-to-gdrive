@@ -130,7 +130,12 @@ class GDriveWriter:
         hash_to_img_url: dict[str, str] = {}
         hash_to_link: dict[str, tuple[str, str]] = {}
 
+        _MAX_IMAGES = 100
+        skipped_images = 0
         for att in attachments:
+            if att.mime in _EMBEDDABLE_IMAGE_MIME and len(image_file_ids) >= _MAX_IMAGES:
+                skipped_images += 1
+                continue
             label = attachment_label(att.mime)
             counters[label] += 1
             filename = attachment_sibling_filename(note.title, label, counters[label], att)
@@ -150,6 +155,9 @@ class GDriveWriter:
                 image_file_ids.append(file_id)
             else:
                 hash_to_link[att.hash] = (filename, drive_url(file_id))
+
+        if skipped_images:
+            _log.warning("note %r: skipped %d image(s) exceeding the 100-image limit", title, skipped_images)
 
         # Phase 1b: set public permissions on images
         if len(image_file_ids) > 2:

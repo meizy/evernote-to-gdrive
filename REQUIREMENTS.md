@@ -231,6 +231,8 @@ For batch requests (`batch.execute`), account for N sub-requests by sleeping `N 
 - Group Drive metadata updates (e.g. `modifiedTime`, `description`) into a single `files.update` call.
 - Batch permission and delete operations when handling multiple files per note.
 
+**Batch request limit** — Drive batch HTTP requests support a maximum of 100 sub-requests. To stay within this limit, at most 100 embeddable images are uploaded per note. Any images beyond 100 are skipped and a warning is logged. Non-image attachments are unaffected by this limit.
+
 #### 750 GB daily upload limit
 
 Track total bytes uploaded during the session. When a persistent `403`/`429` error occurs after all retries are exhausted and a substantial amount of data has been uploaded (>100 GB), include a hint in the error message suggesting the user may have hit the 750 GB daily limit and can resume tomorrow. The 750 GB limit error is indistinguishable from other rate-limit errors (same `403`/`429` status codes), so the byte counter provides the context needed to give the user a useful recommendation.
