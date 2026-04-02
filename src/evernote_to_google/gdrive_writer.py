@@ -31,6 +31,7 @@ from .classifier import (
 from .docs import create_doc
 from .drive import (
     _retry,
+    _write_retry,
     batch_delete_files,
     batch_set_permissions,
     drive_url,
@@ -157,7 +158,7 @@ class GDriveWriter:
         else:
             for fid in image_file_ids:
                 _log.debug("going to make image file %s public (permissions.create)", fid)
-                _retry(
+                _write_retry(
                     self._drive.permissions().create(
                         fileId=fid,
                         body={"role": "reader", "type": "anyone"},
@@ -184,7 +185,7 @@ class GDriveWriter:
             else:
                 for fid in image_file_ids:
                     _log.debug("going to delete temp image file %s (files.delete)", fid)
-                    _retry(self._drive.files().delete(fileId=fid).execute)
+                    _write_retry(self._drive.files().delete(fileId=fid).execute)
                     _log.debug("temp image file %s deleted", fid)
 
         return doc_id

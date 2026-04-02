@@ -209,26 +209,45 @@ evernote-to-gdrive migrate INPUT [OPTIONS]
 
 ### Quota Management
 
-Google Drive and Google Docs APIs have **separate, independent quotas**. Drive API calls (file creation, metadata updates, uploads) count against the Drive quota; Docs API calls (`batchUpdate`, `get`) count against the Docs quota. Both must be managed independently.
+All operations use the **Drive API v3 only** (Google Docs are created via Drive's HTML import with MIME type conversion). There is no separate Docs API quota to manage.
+
+#### Google Drive API Limits
+
+| Limit | Value | Scope |
+|---|---|---|
+| **Queries** | 12,000 per minute | Per user |
+| **Write requests (sustained)** | 3 per second | Per user, not increasable |
+| **Daily upload volume** | 750 GB per 24 hours | Per user, includes copies |
+
+Write operations include: `files.create`, `files.update`, `files.delete`, `permissions.create`. Read operations include: `files.list`, `files.get`.
+
+#### Write throttling
+
+Proactively throttle all write API calls to stay within the 3 writes/sec sustained limit. Insert a ~0.34 s delay between consecutive write calls. Read calls (`files.list`) are **not** throttled — the 12,000/min read limit is far above what sequential processing can reach.
+
+For batch requests (`batch.execute`), account for N sub-requests by sleeping `N × 0.34 s` before executing the batch.
 
 **Batch calls** — use batch requests wherever the API supports them. Specifically:
-- Combine multiple Docs `batchUpdate` requests (e.g. text insertion, image embedding, paragraph direction) into a single call per document rather than one call per operation.
 - Group Drive metadata updates (e.g. `modifiedTime`, `description`) into a single `files.update` call.
+- Batch permission and delete operations when handling multiple files per note.
 
-**Proactive pacing** — do not fire requests as fast as possible. Insert deliberate inter-call delays to stay within quota:
-- After each Drive file creation or upload, wait a short interval (e.g. 0.1–0.5 s) before the next call.
-- After each Docs `batchUpdate`, wait similarly.
-- Track calls per second/minute separately for Drive and Docs and throttle each independently.
+#### 750 GB daily upload limit
 
-**Exponential backoff on quota errors** — if a `429 Resource Exhausted` or `403 rateLimitExceeded` response is received:
+Track total bytes uploaded during the session. When a persistent `403`/`429` error occurs after all retries are exhausted and a substantial amount of data has been uploaded (>100 GB), include a hint in the error message suggesting the user may have hit the 750 GB daily limit and can resume tomorrow. The 750 GB limit error is indistinguishable from other rate-limit errors (same `403`/`429` status codes), so the byte counter provides the context needed to give the user a useful recommendation.
+
+Do **not** proactively stop the migration at a threshold — let Google enforce the limit and use the byte counter to enrich the error message.
+
+#### Exponential backoff on quota errors
+
+If a `429 Resource Exhausted` or `403 rateLimitExceeded` response is received:
 1. Catch the error and extract the retry-after hint if present.
-2. Wait `base_delay * 2^attempt` seconds (base delay: 1 s; max delay: 64 s).
+2. Wait `base_delay × 2^attempt` seconds (base delay: 1 s; max delay: 64 s).
 3. Retry up to 5 times before marking the note as failed and continuing.
 4. Log each retry with attempt number and delay at DEBUG level.
 
-This applies to both Drive and Docs API calls.
+#### Resuming interrupted runs
 
-**Resuming interrupted runs** — existing notes are always skipped (never duplicated). If a migration run is interrupted (e.g. quota exhausted for the day), rerunning will resume without re-uploading completed notes. This is an important quota-conservation mechanism. To keep the skip check itself parsimonious, existing files in each target folder must be fetched in a single `files.list` call (with the folder ID as parent) rather than issuing one lookup per note. The result is cached in memory for the duration of the run.
+Existing notes are always skipped (never duplicated). If a migration run is interrupted (e.g. quota exhausted for the day), rerunning will resume without re-uploading completed notes. This is an important quota-conservation mechanism. To keep the skip check itself parsimonious, existing files in each target folder must be fetched in a single `files.list` call (with the folder ID as parent) rather than issuing one lookup per note. The result is cached in memory for the duration of the run.
 
 ## Error Handling
 

@@ -19,7 +19,10 @@ from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
 from rich.table import Column
 
+from googleapiclient.errors import HttpError
+
 from .classifier import NoteKind, attachment_label, attachment_sibling_filename, classify, _safe_name, _EMBEDDABLE_IMAGE_MIME
+from .drive import get_bytes_uploaded, log_throttle_summary, reset_throttle_sleep_total
 from .parser import Note, load_notes
 
 console = Console()
@@ -131,6 +134,7 @@ def run_migration(input_path: Path, options: MigrationOptions) -> list[Migration
             for notebook, group in itertools.groupby(notes, key=lambda n: n.notebook):
                 nb_start = time.monotonic()
                 nb_count = 0
+                reset_throttle_sleep_total()
                 for note in group:
                     t0 = time.monotonic()
                     record = _migrate_note(note=note, options=options, writer=writer)
@@ -147,6 +151,7 @@ def run_migration(input_path: Path, options: MigrationOptions) -> list[Migration
                 if gdrive:
                     nb_elapsed = time.monotonic() - nb_start
                     console.print(f"  [dim]{notebook}: {nb_elapsed:.1f}s total ({nb_count} notes)")
+                    log_throttle_summary(notebook, nb_elapsed)
         else:
             with Progress(
                 TextColumn("[progress.description]{task.description}", table_column=Column(width=55, no_wrap=True)),
@@ -250,10 +255,19 @@ def _migrate_note(note: Note, options: MigrationOptions, writer) -> MigrationRec
         )
 
     except Exception as exc:
-        _eprint(f"Error: {note.title!r}: {exc} ({type(exc).__name__})")
+        error_msg = str(exc)
+        if isinstance(exc, HttpError) and exc.status_code in (403, 429):
+            gb_uploaded = get_bytes_uploaded() / 1024 ** 3
+            if gb_uploaded > 100:
+                error_msg += (
+                    f" | You've uploaded ~{gb_uploaded:.0f} GB this session."
+                    " This may be the 750 GB daily upload limit —"
+                    " resume tomorrow with the same command (completed notes will be skipped)."
+                )
+        _eprint(f"Error: {note.title!r}: {error_msg} ({type(exc).__name__})")
         return MigrationRecord(
             notebook=note.notebook, title=note.title, kind=kind_label,
-            status=MigrationStatus.ERROR, output=[], error=str(exc),
+            status=MigrationStatus.ERROR, output=[], error=error_msg,
         )
 
 

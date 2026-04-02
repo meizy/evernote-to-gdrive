@@ -16,7 +16,7 @@ from typing import Any
 
 from googleapiclient.http import MediaInMemoryUpload
 
-from .drive import _retry
+from .drive import _write_retry, add_bytes_uploaded
 
 _log = logging.getLogger(__name__)
 
@@ -45,14 +45,15 @@ def create_doc(
 
     _log.debug("going to create gdoc %r (files.create)", title)
     media = MediaInMemoryUpload(html, mimetype="text/html", resumable=False)
-    file = _retry(drive.files().create(body=metadata, media_body=media, fields="id").execute)
+    file = _write_retry(drive.files().create(body=metadata, media_body=media, fields="id").execute)
     doc_id = file["id"]
+    add_bytes_uploaded(len(html))
     _log.debug("gdoc %r created successfully (id: %s)", title, doc_id)
 
     # Drive resets modifiedTime during import — patch it back (best-effort).
     if modified_time:
         _log.debug("going to restore modifiedTime for doc %s (files.update)", doc_id)
-        _retry(
+        _write_retry(
             drive.files()
             .update(
                 fileId=doc_id,
