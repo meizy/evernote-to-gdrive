@@ -25,9 +25,13 @@ Each note falls into one of these categories:
 
 "Meaningful text" means non-empty after stripping Evernote's HTML markup and whitespace.
 
+`application/octet-stream` attachments (raw HTML blobs saved by the Evernote web clipper) are excluded from classification and output.
+
 ### Attachment policy (`--attachments`)
 
 Controlled by a CLI flag, default: `doc`. Applies to all note types that produce a doc (text+attachments and attachment-only-multi). For text+attachment notes, `files` implies `both` since the doc must exist to hold the text.
+
+Web-clipped notes (those with a source URL) always use `doc` policy regardless of `--attachments`, to avoid producing sibling files from web clipper images.
 
 | Flag value | Behavior |
 |---|---|
@@ -116,6 +120,14 @@ The stack name is derived from the subdirectory name in the `evernote-backup` ex
 - **Tags** — no meaningful equivalent in Google Drive
 - **Author, geolocation, reminders, encrypted content** — not extracted from ENEX
 
+### Content processing
+
+The following transformations are applied to note content in all output formats:
+
+- **Encrypted blocks** (`<en-crypt>`) are stripped from the output.
+- **Checkboxes** (`<en-todo>`) are converted to `[x]` (checked) or `[ ]` (unchecked) text markers.
+- **External images** (HTTP/HTTPS `<img>` tags embedded in notes by the web clipper) are removed with a warning — they cannot be fetched or embedded.
+
 ## `analyze` Subcommand
 
 Before migrating, the user can run:
@@ -173,6 +185,8 @@ Commands:
 
 evernote-to-gdrive analyze INPUT [OPTIONS]
   --output-json PATH    Also write stats to a JSON file
+  --mime MIME_TYPE       List notes that have an attachment of this MIME type
+  --findnote TITLE      Find which notebook(s) contain a note with a given title
 
 evernote-to-gdrive migrate INPUT [OPTIONS]
   --output [gdrive|local]    Output mode [default: gdrive]
@@ -181,8 +195,18 @@ evernote-to-gdrive migrate INPUT [OPTIONS]
   --dry-run                  Authenticate and create root Drive folder only (gdrive mode only)
   --stack TEXT               Only migrate notebooks in this stack (repeatable)
   --notebook TEXT            Only migrate this notebook (repeatable)
+  --note TITLE               Only migrate the note with this exact title (requires --notebook)
   --attachments [doc|files|both]  How to handle attachments [default: doc]
-  --log-file PATH            Write migration log (CSV) [default: migration.log]
+  --log-file PATH            Write migration log (CSV)
+  --verbose                  Print a line per note instead of a progress bar
+```
+
+### Developer options
+
+```
+evernote-to-gdrive migrate INPUT [OPTIONS]
+  --debug                    Enable debug logging with timestamps for API calls
+  --dest null                Run migration without writing files (output is discarded)
 ```
 
 ## Progress & Logging
