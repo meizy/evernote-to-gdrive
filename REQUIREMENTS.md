@@ -31,7 +31,7 @@ Controlled by a CLI flag, default: `doc`. Applies to all note types that produce
 
 | Flag value | Behavior |
 |---|---|
-| `doc` *(default)* | Embed images inline in the doc; upload PDFs/other as sibling files and link them. Temp image files created during gdrive embedding are deleted after the doc is created. |
+| `doc` *(default)* | Embed images inline in the doc; upload PDFs/other as sibling files and link them. |
 | `files` | One raw sibling file per attachment, named `<title>_<label>_<n>.<ext>`. For text+attachment notes, the doc is also created and all attachments are kept as siblings (same as `both`). |
 | `both` | Embed images inline in the doc AND keep all attachments as sibling files. |
 
@@ -58,17 +58,9 @@ When a doc has sibling files, the doc itself is named `<title>_0` (e.g. `My Note
 
 ### Image embedding in Google Docs
 
-The Google Docs API supports **inline image insertion** (`insertInlineImage`) for JPEG, PNG, and GIF. The API requires a publicly accessible URL (max 2KB) — base64 data URIs are not supported.
+JPEG, PNG, and GIF images are embedded inline in the Google Doc. A maximum of 100 images are embedded per note; any beyond that are skipped with a warning.
 
-**Embedding flow (gdrive mode):**
-1. Upload the image to Drive in the notebook folder using the sibling filename pattern.
-2. Grant public read access (`anyone with link`).
-3. Pass the public Drive download URL to `insertInlineImage` in the doc's single `batchUpdate` call.
-4. If policy is `doc`: delete the uploaded image file after the doc is created (it was only needed temporarily). If policy is `both` or `files`: keep it.
-
-This results in **2N+2 API calls** per note without deletion (N uploads + N permission grants + 1 doc create + 1 modifiedTime patch), or **3N+2** with deletion.
-
-**PDFs cannot be embedded** via the Docs API. PDF attachments are uploaded as sibling Drive files and linked from the doc with a clearly labelled hyperlink.
+PDF attachments are uploaded as sibling Drive files and linked from the doc with a clearly labelled hyperlink.
 
 ## Notebook → Folder Mapping
 
@@ -146,11 +138,7 @@ This lets the user gauge migration scope and expected Drive storage usage before
 
 ## Google Authentication
 
-Uses OAuth 2.0 with scopes:
-- `https://www.googleapis.com/auth/drive.file` — create/manage files the app creates
-- `https://www.googleapis.com/auth/documents` — create and edit Google Docs
-
-Credentials stored locally in `.config/` under the project directory after first-run authorization.
+Uses OAuth 2.0. Credentials stored locally in `.config/` under the project directory after first-run authorization.
 
 ## Output Modes
 
@@ -172,9 +160,7 @@ Writes notes to a local folder tree on disk (mirroring the stack/notebook hierar
 | Text + attachments (`--attachments=doc`) | `<title>_0.docx` with images embedded inline; PDFs/other as sibling files linked in the doc |
 | Text + attachments (`--attachments=files` or `both`) | `<title>_0.docx` with images embedded inline; all attachments also kept as sibling files |
 
-RTL paragraphs (Hebrew, Arabic) are detected and marked as bidirectional in the `.docx` XML so Word, LibreOffice, and Google Docs all render them correctly.
-
-For Google Docs uploads, if the note title or any paragraph contains RTL characters, all paragraphs in the document are set to `RIGHT_TO_LEFT` direction via the Docs API `batchUpdate`. This is a document-level setting (not per-paragraph) due to API constraints.
+RTL text (Hebrew, Arabic) is rendered correctly in all output formats.
 
 ## CLI Interface
 
@@ -207,9 +193,7 @@ evernote-to-gdrive migrate INPUT [OPTIONS]
 
 ## Google API Usage
 
-### Quota Management
-
-All operations use the **Drive API v3 only** (Google Docs are created via Drive's HTML import with MIME type conversion). There is no separate Docs API quota to manage.
+All operations use the **Drive API v3 only**.
 
 #### Google Drive API Limits
 
@@ -219,37 +203,15 @@ All operations use the **Drive API v3 only** (Google Docs are created via Drive'
 | **Write requests (sustained)** | 3 per second | Per user, not increasable |
 | **Daily upload volume** | 750 GB per 24 hours | Per user, includes copies |
 
-Write operations include: `files.create`, `files.update`, `files.delete`, `permissions.create`. Read operations include: `files.list`, `files.get`.
+#### Rate limit handling
 
-#### Write throttling
-
-Proactively throttle all write API calls to stay within the 3 writes/sec sustained limit. Insert a ~0.34 s delay between consecutive write calls. Read calls (`files.list`) are **not** throttled — the 12,000/min read limit is far above what sequential processing can reach.
-
-For batch requests (`batch.execute`), account for N sub-requests by sleeping `N × 0.34 s` before executing the batch.
-
-**Batch calls** — use batch requests wherever the API supports them. Specifically:
-- Group Drive metadata updates (e.g. `modifiedTime`, `description`) into a single `files.update` call.
-- Batch permission and delete operations when handling multiple files per note.
-
-**Batch request limit** — Drive batch HTTP requests support a maximum of 100 sub-requests. To stay within this limit, at most 100 embeddable images are uploaded per note. Any images beyond 100 are skipped and a warning is logged. Non-image attachments are unaffected by this limit.
-
-#### 750 GB daily upload limit
-
-Track total bytes uploaded during the session. When a persistent `403`/`429` error occurs after all retries are exhausted and a substantial amount of data has been uploaded (>100 GB), include a hint in the error message suggesting the user may have hit the 750 GB daily limit and can resume tomorrow. The 750 GB limit error is indistinguishable from other rate-limit errors (same `403`/`429` status codes), so the byte counter provides the context needed to give the user a useful recommendation.
-
-Do **not** proactively stop the migration at a threshold — let Google enforce the limit and use the byte counter to enrich the error message.
-
-#### Exponential backoff on quota errors
-
-If a `429 Resource Exhausted` or `403 rateLimitExceeded` response is received:
-1. Catch the error and extract the retry-after hint if present.
-2. Wait `base_delay × 2^attempt` seconds (base delay: 1 s; max delay: 64 s).
-3. Retry up to 5 times before marking the note as failed and continuing.
-4. Log each retry with attempt number and delay at DEBUG level.
+- Write calls are proactively throttled to stay within the 3 writes/sec sustained limit.
+- On `429` or `403 rateLimitExceeded`, the tool retries with exponential backoff (up to 5 attempts) before marking the note as failed.
+- When a persistent rate-limit error occurs after a large upload session, the error message includes a hint that the 750 GB daily limit may have been reached and the user can resume the next day.
 
 #### Resuming interrupted runs
 
-Existing notes are always skipped (never duplicated). If a migration run is interrupted (e.g. quota exhausted for the day), rerunning will resume without re-uploading completed notes. This is an important quota-conservation mechanism. To keep the skip check itself parsimonious, existing files in each target folder must be fetched in a single `files.list` call (with the folder ID as parent) rather than issuing one lookup per note. The result is cached in memory for the duration of the run.
+Existing notes are never re-uploaded. If a run is interrupted, rerunning resumes from where it left off.
 
 ## Error Handling
 
@@ -265,10 +227,9 @@ Existing notes are always skipped (never duplicated). If a migration run is inte
 - Shared notebooks or collaboration features
 - Incremental sync / two-way sync
 
-## Dependencies (planned)
+## Dependencies
 
 - `lxml` — ENEX parsing
-- `google-api-python-client` + `google-auth-oauthlib` — Drive and Docs APIs
+- `google-api-python-client` + `google-auth-oauthlib` — Drive API
 - `rich` — progress display and console output
-- `html2text` — converting Evernote HTML body to plain text / Docs content
-- `python-docx` — generating `.docx` files for local output mode (text, embedded images, and hyperlinked PDF attachments)
+- `python-docx` + `html4docx` — generating `.docx` files for local output mode

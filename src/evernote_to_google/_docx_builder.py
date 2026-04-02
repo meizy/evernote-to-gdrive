@@ -132,57 +132,6 @@ def _attachment_hash_map(attachments: list[Attachment]) -> dict[str, Attachment]
     return {hashlib.md5(att.data).hexdigest(): att for att in attachments}
 
 
-def _strip_navigation_elements(html: str, _debug_title: str = "") -> str:
-    """Remove site-chrome elements captured by the Evernote web clipper.
-
-    The web clipper sometimes captures the full page including navigation
-    menus, headers, and footers. Strip semantic tags (<nav>, <header>,
-    <footer>) and any block with role="navigation" or role="banner".
-    Uses lxml for robustness; falls back to regex on parse failure.
-    """
-    import os
-    _debug = os.environ.get("EN_DEBUG_NAV")
-    try:
-        from lxml import etree
-        import lxml.html as lxmlhtml
-        root = lxmlhtml.fragment_fromstring(html, create_parent='div')
-        _NAV_ROLES = {'navigation', 'banner', 'contentinfo'}
-        removed: list[str] = []
-        for el in list(root.iter()):
-            tag = el.tag if isinstance(el.tag, str) else ''
-            role = (el.get('role') or '').strip().lower()
-            if tag.lower() in ('nav', 'header', 'footer') or role in _NAV_ROLES:
-                parent = el.getparent()
-                if parent is not None:
-                    if _debug:
-                        snippet = (el.text_content() if hasattr(el, 'text_content') else '')[:80].replace('\n', ' ')
-                        removed.append(f"<{tag} role={role!r}> {snippet!r}")
-                    if el.tail:
-                        prev = el.getprevious()
-                        if prev is not None:
-                            prev.tail = (prev.tail or '') + el.tail
-                        else:
-                            parent.text = (parent.text or '') + el.tail
-                    parent.remove(el)
-        if _debug and removed:
-            prefix = f"[nav-strip] {_debug_title!r}: " if _debug_title else "[nav-strip] "
-            for r in removed:
-                print(f"{prefix}removed {r}")
-        elif _debug:
-            prefix = f"[nav-strip] {_debug_title!r}: " if _debug_title else "[nav-strip] "
-            print(f"{prefix}nothing removed")
-        parts = []
-        if root.text:
-            parts.append(root.text)
-        for child in root:
-            parts.append(etree.tostring(child, encoding='unicode', method='html'))
-        return ''.join(parts)
-    except Exception:
-        for tag in ('nav', 'header', 'footer'):
-            html = re.sub(rf'<{tag}\b[^>]*>.*?</{tag}>', '', html, flags=re.DOTALL | re.IGNORECASE)
-        return html
-
-
 def _sanitize_enml(enml: str, hash_map: dict[str, Attachment], title: str = "") -> str:
     """Convert ENML to clean HTML for html4docx.
 
@@ -192,9 +141,6 @@ def _sanitize_enml(enml: str, hash_map: dict[str, Attachment], title: str = "") 
     """
     html = re.sub(r'<\?xml[^>]*\?>', '', enml)
     html = re.sub(r'<!DOCTYPE[^>]*>', '', html)
-    # Strip navigation elements BEFORE generating data URIs — lxml's HTML parser
-    # truncates very long attribute values, which corrupts multi-MB base64 strings.
-    html = _strip_navigation_elements(html, _debug_title=title)
 
     def replace_en_media(m: re.Match) -> str:
         tag = m.group(0)

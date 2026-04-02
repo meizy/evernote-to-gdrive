@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import re
+import sys
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
@@ -83,6 +84,19 @@ def _enml_to_html(
         return ""
 
     html = re.sub(r"<en-media\b[^>]*/?>", _replace_media, html)
+
+    # Strip encrypted blocks
+    html = re.sub(r"<en-crypt\b[^>]*>.*?</en-crypt>", "", html, flags=re.DOTALL)
+    # Convert checkboxes to text markers
+    html = re.sub(r'<en-todo\b[^>]*checked="true"[^>]*/>', "[x]\u00a0", html)
+    html = re.sub(r"<en-todo\b[^>]*/?>", "[\u00a0]\u00a0", html)
+    # Strip external <img> tags (Drive importer may fail to fetch remote URLs)
+    external_imgs = re.findall(r'<img\b[^>]*\bsrc="(https?://[^"]*)"[^>]*/?>',  html, flags=re.IGNORECASE)
+    if external_imgs:
+        _log.warning("note: %d external image(s) skipped (not embeddable)", len(external_imgs))
+        print(f"WARNING: {len(external_imgs)} external image(s) skipped (not embeddable)", file=sys.stderr, flush=True)
+    html = re.sub(r'<img\b[^>]*\bsrc="https?://[^"]*"[^>]*/>', "", html, flags=re.IGNORECASE)
+    html = re.sub(r'<img\b[^>]*\bsrc="https?://[^"]*"[^>]*>', "", html, flags=re.IGNORECASE)
 
     if source_url:
         header = f'<p>Source: <a href="{source_url}">{source_url}</a></p>'
