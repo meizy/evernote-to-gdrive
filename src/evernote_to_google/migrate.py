@@ -22,6 +22,7 @@ from rich.table import Column
 from googleapiclient.errors import HttpError
 
 from .classifier import NoteKind, attachment_label, attachment_sibling_filename, classify, _safe_name, _EMBEDDABLE_IMAGE_MIME
+from .display import rtl_display
 from .drive import get_bytes_uploaded, log_throttle_summary, reset_throttle_sleep_total
 from .parser import Note, load_notes
 
@@ -95,16 +96,16 @@ def run_migration(input_path: Path, options: MigrationOptions) -> list[Migration
         available_notebooks = {n.notebook for n in notes}
         missing = nb_set - available_notebooks
         if missing:
-            _eprint(f"Error: notebook(s) not found: {', '.join(sorted(missing))}")
+            _eprint(f"Error: notebook(s) not found: {', '.join(rtl_display(n) for n in sorted(missing))}")
             if available_notebooks:
-                _eprint(f"  Available notebooks: {', '.join(sorted(available_notebooks))}")
+                _eprint(f"  Available notebooks: {', '.join(rtl_display(n) for n in sorted(available_notebooks))}")
             return []
         notes = [n for n in notes if n.notebook in nb_set]
 
     if options.note:
         notes = [n for n in notes if n.title == options.note]
         if not notes:
-            _eprint(f"Error: note {options.note!r} not found in the selected notebook(s).")
+            _eprint(f"Error: note {rtl_display(options.note)!r} not found in the selected notebook(s).")
             return []
 
     # In null mode create one shared temp dir, deleted at the end
@@ -134,23 +135,27 @@ def run_migration(input_path: Path, options: MigrationOptions) -> list[Migration
             for notebook, group in itertools.groupby(notes, key=lambda n: n.notebook):
                 nb_start = time.monotonic()
                 nb_count = 0
+                nb_bytes = 0
                 reset_throttle_sleep_total()
                 for note in group:
                     t0 = time.monotonic()
+                    nb_bytes += len(note.enml.encode("utf-8")) if note.enml else 0
+                    nb_bytes += sum(len(a.data) for a in note.attachments)
                     record = _migrate_note(note=note, options=options, writer=writer)
                     elapsed = time.monotonic() - t0
                     records.append(record)
                     nb_count += 1
-                    label = f"[cyan]{note.notebook}[/] / {note.title}"
+                    label = f"[cyan]{rtl_display(note.notebook)}[/] / {rtl_display(note.title)}"
                     if record.status == MigrationStatus.SKIPPED:
                         console.print(f"{label} - skipped")
                     elif gdrive:
                         console.print(f"{label} ({elapsed:.1f}s)")
                     else:
                         console.print(label)
+                nb_elapsed = time.monotonic() - nb_start
+                nb_mb = nb_bytes / (1024 * 1024)
+                console.print(f"  [dim]{rtl_display(notebook)}: {nb_count} notes, {nb_elapsed:.1f}s, {nb_mb:.1f}MB")
                 if gdrive:
-                    nb_elapsed = time.monotonic() - nb_start
-                    console.print(f"  [dim]{notebook}: {nb_elapsed:.1f}s total ({nb_count} notes)")
                     log_throttle_summary(notebook, nb_elapsed)
         else:
             with Progress(
@@ -264,7 +269,7 @@ def _migrate_note(note: Note, options: MigrationOptions, writer) -> MigrationRec
                     " This may be the 750 GB daily upload limit —"
                     " resume tomorrow with the same command (completed notes will be skipped)."
                 )
-        _eprint(f"Error: {note.title!r}: {error_msg} ({type(exc).__name__})")
+        _eprint(f"Error: {rtl_display(note.title)!r}: {error_msg} ({type(exc).__name__})")
         return MigrationRecord(
             notebook=note.notebook, title=note.title, kind=kind_label,
             status=MigrationStatus.ERROR, output=[], error=error_msg,
@@ -297,5 +302,5 @@ def _print_summary(records: list[MigrationRecord]) -> None:
         console.print(f"  [red]Errors:  {errors}[/]")
         for r in records:
             if r.status == MigrationStatus.ERROR:
-                _eprint(f"  - {r.notebook}/{r.title}: {r.error}")
+                _eprint(f"  - {rtl_display(r.notebook)}/{rtl_display(r.title)}: {r.error}")
     console.print()

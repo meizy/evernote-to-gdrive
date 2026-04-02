@@ -13,6 +13,7 @@ from rich.console import Console
 from rich.table import Table
 
 from .classifier import NoteKind, classify
+from .display import rtl_display
 from .parser import Note, load_notes
 
 console = Console()
@@ -42,6 +43,9 @@ class AnalysisResult:
     # attachment info
     attachments: AttachmentStats = field(default_factory=AttachmentStats)
     notes_with_multi_attachments: int = 0
+
+    # per-notebook attachment sizes
+    attachment_bytes_by_notebook: dict[str, int] = field(default_factory=lambda: defaultdict(int))
 
     # issues
     empty_notes: int = 0       # no text AND no attachments
@@ -84,6 +88,7 @@ def run_analysis(input_path: Path) -> AnalysisResult:
             result.attachments.count += 1
             result.attachments.total_bytes += size
             result.attachments.by_mime[att.mime] += 1
+            result.attachment_bytes_by_notebook[note.notebook] += size
             if size > result.attachments.largest_bytes:
                 result.attachments.largest_bytes = size
                 result.attachments.largest_name = att.filename or note.title
@@ -168,9 +173,20 @@ def print_report(result: AnalysisResult) -> None:
     nb_table.add_column("Notebook", style="bold")
     nb_table.add_column("Notes", justify="right")
     for nb, cnt in sorted(result.by_notebook.items()):
-        nb_table.add_row(nb, str(cnt))
+        nb_table.add_row(rtl_display(nb), str(cnt))
     console.print(nb_table)
     console.print()
+
+    # Top 10 notebooks by attachment size
+    if result.attachment_bytes_by_notebook:
+        top = sorted(result.attachment_bytes_by_notebook.items(), key=lambda x: x[1], reverse=True)[:10]
+        top_table = Table(title="Top Notebooks by Attachment Size")
+        top_table.add_column("Notebook", style="bold")
+        top_table.add_column("Total Size", justify="right")
+        for nb, nbytes in top:
+            top_table.add_row(rtl_display(nb), f"{nbytes / 1_048_576:.1f} MB")
+        console.print(top_table)
+        console.print()
 
     # Warnings
     if result.empty_notes or result.encrypted_notes:
@@ -201,7 +217,7 @@ def list_notes_by_mime(input_path: Path, mime_type: str) -> None:
     table.add_column("Note title")
     table.add_column("Matching files")
     for notebook, title, filenames in sorted(matches):
-        table.add_row(notebook, title, ", ".join(filenames))
+        table.add_row(rtl_display(notebook), title, ", ".join(filenames))
     console.print()
     console.print(table)
     console.print(f"\n[dim]{len(matches)} note(s) matched.")
@@ -221,7 +237,7 @@ def find_note(input_path: Path, title: str) -> None:
     table.add_column("Notebook", style="bold")
     table.add_column("Stack")
     for notebook, stack in sorted(matches):
-        table.add_row(notebook, stack or "")
+        table.add_row(rtl_display(notebook), stack or "")
     console.print()
     console.print(table)
     console.print(f"\n[dim]{len(matches)} match(es).")
@@ -247,6 +263,9 @@ def save_json(result: AnalysisResult, path: Path) -> None:
             "largest_name": result.attachments.largest_name,
         },
         "notes_with_multi_attachments": result.notes_with_multi_attachments,
+        "top_notebooks_by_attachment_size": dict(
+            sorted(result.attachment_bytes_by_notebook.items(), key=lambda x: x[1], reverse=True)[:10]
+        ),
         "warnings": {
             "empty_notes": result.empty_notes,
             "encrypted_notes": result.encrypted_notes,

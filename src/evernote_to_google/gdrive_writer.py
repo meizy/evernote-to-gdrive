@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 _log = logging.getLogger(__name__)
 
 from .auth import get_services
+from .display import rtl_display
 from .classifier import (
     _EMBEDDABLE_IMAGE_MIME,
     attachment_label,
@@ -119,7 +120,7 @@ class GDriveWriter:
 
     def write_doc(self, title: str, plain_text: str, attachments: list[Attachment], note: Note, policy: "AttachmentPolicy | None" = None) -> str:
         policy = policy or self._policy
-        _log.debug("going to write note %r as gdoc (%d attachments)", title, len(attachments))
+        _log.debug("going to write note %r as gdoc (%d attachments)", rtl_display(title), len(attachments))
         parent_id = self._notebook_id(note)
         desc = make_description(note.created, note.source_url)
         mtime = note.updated or note.created
@@ -157,7 +158,7 @@ class GDriveWriter:
                 hash_to_link[att.hash] = (filename, drive_url(file_id))
 
         if skipped_images:
-            _log.warning("note %r: skipped %d image(s) exceeding the 100-image limit", title, skipped_images)
+            _log.warning("note %r: skipped %d image(s) exceeding the 100-image limit", rtl_display(title), skipped_images)
 
         # Phase 1b: set public permissions on images
         if len(image_file_ids) > 2:
