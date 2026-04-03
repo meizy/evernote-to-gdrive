@@ -108,7 +108,7 @@ The stack name is derived from the subdirectory name in the `evernote-backup` ex
 | Title | Filename / doc name |
 | Notebook | Folder name |
 | Stack | Parent folder |
-| Content | Converted to plain text body |
+| Content | Converted to document body with formatting preserved (bold, italic, headings, tables, lists, font sizes/colors, etc.) |
 | Attachments | Images embedded inline; non-image attachments uploaded/written separately and linked |
 | Source URL | Inserted as first line of document body |
 | Updated date | File `mtime` (local) / `modifiedTime` on Drive file (google); falls back to `created` if absent |
@@ -134,7 +134,9 @@ The stack name is derived from the subdirectory name in the `evernote-backup` ex
 
 ### Content processing
 
-The following transformations are applied to note content in all output formats:
+Evernote's HTML-based formatting is preserved in both output modes: bold, italic, underline, headings, tables, ordered and unordered lists, font sizes, and colors. In local mode this is achieved via `html4docx` converting ENML to `.docx`; in Google Drive mode via Drive's native HTML→Google Doc import.
+
+The following additional transformations are applied to note content in all output formats:
 
 - **Encrypted blocks** (`<en-crypt>`) are stripped from the output.
 - **Checkboxes** (`<en-todo>`) are converted to `[x]` (checked) or `[ ]` (unchecked) text markers.

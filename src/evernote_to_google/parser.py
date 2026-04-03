@@ -43,6 +43,14 @@ class Note:
     attachments: list[Attachment] = field(default_factory=list)
 
 
+@dataclass
+class NotebookInfo:
+    """Lightweight metadata derived from an enex file's path — no XML parsing needed."""
+    notebook: str
+    stack: str | None
+    path: Path
+
+
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _parse_date(text: str | None) -> datetime | None:
@@ -113,50 +121,54 @@ def _parse_note(note_el: etree._Element, notebook: str) -> Note:
 # ── public API ────────────────────────────────────────────────────────────────
 
 def parse_enex(path: Path, stack: str | None = None) -> Iterator[Note]:
-    """Yield Note objects from a single .enex file."""
+    """Yield Note objects from a single .enex file, one at a time (streaming)."""
     notebook = path.stem
-    tree = etree.parse(str(path))
-    root = tree.getroot()
-    for note_el in root.findall("note"):
+    for _event, note_el in etree.iterparse(str(path), events=("end",), tag="note"):
         note = _parse_note(note_el, notebook)
         note.stack = stack
+        note_el.clear()
+        parent = note_el.getparent()
+        if parent is not None:
+            parent.remove(note_el)
         yield note
 
 
-def parse_enex_dir(directory: Path) -> Iterator[Note]:
-    """Yield Note objects from all .enex files in a directory (recursive).
+def scan_enex_structure(input_path: Path) -> list[NotebookInfo]:
+    """Return notebook/stack metadata from the filesystem without parsing any XML.
 
     Directory structure maps to Evernote stacks:
       <dir>/<notebook>.enex          → notebook, no stack
       <dir>/<stack>/<notebook>.enex  → notebook inside a stack
     """
-    enex_files = sorted(directory.rglob("*.enex"))
+    if not input_path.is_dir():
+        if input_path.suffix.lower() != ".enex":
+            raise ValueError(f"Expected a .enex file or directory, got: {input_path}")
+        return [NotebookInfo(notebook=input_path.stem, stack=None, path=input_path)]
+
+    enex_files = sorted(input_path.rglob("*.enex"))
     if not enex_files:
-        raise ValueError(f"No .enex files found in {directory}")
+        raise ValueError(f"No .enex files found in {input_path}")
+
+    result = []
     for enex_path in enex_files:
-        yield from _parse_enex_with_stack(enex_path, directory)
+        relative = enex_path.relative_to(input_path)
+        parts = relative.parts
+        stack = parts[0] if len(parts) == 2 else None
+        result.append(NotebookInfo(notebook=enex_path.stem, stack=stack, path=enex_path))
+    return result
 
 
-def _parse_enex_with_stack(path: Path, root: Path) -> Iterator[Note]:
-    """Parse a single .enex file, injecting stack info derived from its path."""
-    relative = path.relative_to(root)
-    parts = relative.parts  # e.g. ('Startups', 'Funding.enex') or ('Seculert.enex',)
-    notebook = path.stem
-    stack = parts[0] if len(parts) == 2 else None  # only set for stack/notebook.enex
-
-    tree = etree.parse(str(path))
-    root_el = tree.getroot()
-    for note_el in root_el.findall("note"):
-        note = _parse_note(note_el, notebook)
-        note.stack = stack
-        yield note
+def count_notes(infos: list[NotebookInfo]) -> int:
+    """Count notes across the given enex files without decoding any content."""
+    total = 0
+    for info in infos:
+        for _event, elem in etree.iterparse(str(info.path), events=("start",), tag="note"):
+            total += 1
+            elem.clear()
+    return total
 
 
 def load_notes(input_path: Path) -> Iterator[Note]:
     """Accept either a single .enex file or a directory of .enex files."""
-    if input_path.is_dir():
-        yield from parse_enex_dir(input_path)
-    elif input_path.suffix.lower() == ".enex":
-        yield from parse_enex(input_path)
-    else:
-        raise ValueError(f"Expected a .enex file or directory, got: {input_path}")
+    for info in scan_enex_structure(input_path):
+        yield from parse_enex(info.path, stack=info.stack)
