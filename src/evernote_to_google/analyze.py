@@ -12,7 +12,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 
-from .classifier import NoteKind, classify
+from .classifier import NoteKind, classify, _safe_name
 from .display import rtl_display
 from .parser import Note, load_notes
 
@@ -196,7 +196,7 @@ def print_report(result: AnalysisResult) -> None:
         if result.encrypted_notes:
             console.print(
                 f"[yellow]  {result.encrypted_notes} note(s) contain encrypted sections "
-                "(will be migrated as plain text with encryption markers)"
+                "(encrypted blocks will be stripped from the output)"
             )
         console.print()
 
@@ -241,6 +241,36 @@ def find_note(input_path: Path, title: str) -> None:
     console.print()
     console.print(table)
     console.print(f"\n[dim]{len(matches)} match(es).")
+
+
+def report_duplicates(input_path: Path) -> None:
+    groups: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for note in load_notes(input_path):
+        key = (note.notebook, _safe_name(note.title))
+        groups[key].append(note.title)
+
+    dups = {k: v for k, v in groups.items() if len(v) > 1}
+
+    if not dups:
+        console.print("[green]No duplicate note titles found.")
+        return
+
+    table = Table(title="Duplicate Notes (same notebook + same safe title)")
+    table.add_column("Notebook", style="bold")
+    table.add_column("Safe Title")
+    table.add_column("Count", justify="right")
+    table.add_column("Original Titles")
+    for (notebook, safe_title), titles in sorted(dups.items()):
+        table.add_row(
+            rtl_display(notebook),
+            rtl_display(safe_title),
+            str(len(titles)),
+            "\n".join(rtl_display(t) for t in dict.fromkeys(titles)),
+        )
+    console.print()
+    console.print(table)
+    total = sum(len(v) - 1 for v in dups.values())
+    console.print(f"\n[yellow]{len(dups)} group(s) with duplicates — {total} note(s) will be renamed during migration (local: ' (2)' suffix; gdrive: same name kept).")
 
 
 def save_json(result: AnalysisResult, path: Path) -> None:

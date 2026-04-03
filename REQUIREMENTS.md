@@ -144,7 +144,7 @@ Output (to console and optionally a JSON file):
 - Attachment counts by type (image, PDF, audio, video, other)
 - Total attachment size (MB), largest single attachment
 - Notes with multiple attachments (count)
-- Any notes that would be skipped or need manual review (e.g. encrypted sections)
+- Any notes that would lose content (e.g. notes with encrypted sections, which are stripped)
 
 This lets the user gauge migration scope and expected Drive storage usage before running the full migration.
 
@@ -187,6 +187,7 @@ evernote-to-gdrive analyze INPUT [OPTIONS]
   --output-json PATH    Also write stats to a JSON file
   --mime MIME_TYPE       List notes that have an attachment of this MIME type
   --findnote TITLE      Find which notebook(s) contain a note with a given title
+  --report-dups         List all notes with duplicate titles within the same notebook
 
 evernote-to-gdrive migrate INPUT [OPTIONS]
   --output [gdrive|local]    Output mode [default: gdrive]
@@ -237,9 +238,13 @@ All operations use the **Drive API v3 only**.
 
 Existing notes are never re-uploaded. If a run is interrupted, rerunning resumes from where it left off.
 
+## Duplicate note titles
+
+- **Duplicate note titles within a run**: if two notes in the same notebook share the same safe title, the second (and subsequent) notes are migrated normally — not skipped. In local mode they are renamed with a ` (2)`, ` (3)`, … suffix to avoid filesystem collisions. In Google Drive mode the original name is kept (Drive allows multiple files with the same name, matching Evernote's own behavior). Use `analyze --report-dups` to identify collisions before migrating.
+- **Resumed run skips**: if a note already exists at the destination from a prior run, it is skipped (status: `skipped`).
+
 ## Error Handling
 
-- **Duplicate note titles**: local mode appends ` (2)`, ` (3)`, etc. to avoid filesystem collisions; Google Drive allows multiple files with the same name so duplicates are kept as-is.
 - **Unsupported attachment types**: upload as-is with original MIME type; log a warning
 - **API rate limits**: exponential backoff with retry (max 5 attempts) — see Google API Usage above
 - **Partial failures**: continue migration; report failed notes at the end without halting the run

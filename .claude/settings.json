@@ -14,7 +14,10 @@
       "Bash(perl -pe 's/<[^>]+>//g')",
       "Bash(python test_html_import.py)",
       "Bash(python -c \":*)",
-      "Bash(python -c \"import html4docx; import os; print\\(os.path.dirname\\(html4docx.__file__\\)\\)\")"
+      "Bash(python -c \"import html4docx; import os; print\\(os.path.dirname\\(html4docx.__file__\\)\\)\")",
+      "Bash(python -m pytest tests/ -x -q)",
+      "Bash(.venv/bin/pytest tests/ -x -q)",
+      "Bash(python -m pytest tests/test_enml.py -v)"
     ],
     "additionalDirectories": [
       "/Users/moshe/.claude"

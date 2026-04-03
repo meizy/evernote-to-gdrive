@@ -128,6 +128,7 @@ def run_migration(input_path: Path, options: MigrationOptions) -> list[Migration
         return []
 
     records: list[MigrationRecord] = []
+    seen: dict[tuple[str, str], int] = {}
 
     try:
         if options.verbose:
@@ -141,7 +142,7 @@ def run_migration(input_path: Path, options: MigrationOptions) -> list[Migration
                     t0 = time.monotonic()
                     nb_bytes += len(note.enml.encode("utf-8")) if note.enml else 0
                     nb_bytes += sum(len(a.data) for a in note.attachments)
-                    record = _migrate_note(note=note, options=options, writer=writer)
+                    record = _migrate_note(note=note, options=options, writer=writer, seen=seen)
                     elapsed = time.monotonic() - t0
                     records.append(record)
                     nb_count += 1
@@ -169,7 +170,7 @@ def run_migration(input_path: Path, options: MigrationOptions) -> list[Migration
 
                 for note in notes:
                     progress.update(task, description=f"[cyan]{note.notebook}[/] / {note.title[:40]}")
-                    record = _migrate_note(note=note, options=options, writer=writer)
+                    record = _migrate_note(note=note, options=options, writer=writer, seen=seen)
                     records.append(record)
                     progress.advance(task)
     finally:
@@ -192,38 +193,47 @@ def _has_doc_siblings(attachments: list, policy: AttachmentPolicy) -> bool:
     return any(a.mime not in _EMBEDDABLE_IMAGE_MIME for a in attachments)
 
 
-def _migrate_note(note: Note, options: MigrationOptions, writer) -> MigrationRecord:
+def _migrate_note(note: Note, options: MigrationOptions, writer, seen: dict[tuple[str, str], int]) -> MigrationRecord:
     classified = classify(note)
     kind_label = classified.kind.name.lower()
     safe_title = _safe_name(note.title)
+    eff_title = note.title  # may get a ` (N)` suffix for local-mode duplicates
 
     # Web-clipped notes have a source_url. Force doc policy to avoid
     # producing many junk sibling files from page images.
     policy = AttachmentPolicy.DOC if note.source_url else options.attachments
 
     try:
-        # For attachment-only-multi with FILES policy, files are stored under
-        # sibling filenames, not safe_title — check the first one instead.
-        if (classified.kind == NoteKind.ATTACHMENT_ONLY_MULTI
-                and policy == AttachmentPolicy.FILES
-                and classified.attachments):
-            att0 = classified.attachments[0]
-            check_name = attachment_sibling_filename(note.title, attachment_label(att0.mime), 1, att0)
+        key = (note.notebook, safe_title)
+        if key in seen:
+            seen[key] += 1
+            if options.output_mode == OutputMode.LOCAL:
+                eff_title = f"{note.title} ({seen[key]})"
+                safe_title = _safe_name(eff_title)
+            # gdrive: keep original name — Drive allows same-name files
         else:
-            check_name = safe_title
+            seen[key] = 1
+            # For attachment-only-multi with FILES policy, files are stored under
+            # sibling filenames, not safe_title — check the first one instead.
+            if (classified.kind == NoteKind.ATTACHMENT_ONLY_MULTI
+                    and policy == AttachmentPolicy.FILES
+                    and classified.attachments):
+                att0 = classified.attachments[0]
+                check_name = attachment_sibling_filename(note.title, attachment_label(att0.mime), 1, att0)
+            else:
+                check_name = safe_title
 
-        if writer.note_exists(note, check_name):
-            return MigrationRecord(
-                notebook=note.notebook, title=note.title, kind=kind_label,
-                status=MigrationStatus.SKIPPED, output=[],
-            )
+            if writer.note_exists(note, check_name):
+                return MigrationRecord(
+                    notebook=note.notebook, title=note.title, kind=kind_label,
+                    status=MigrationStatus.SKIPPED, output=[],
+                )
 
         kind = classified.kind
         attachments = classified.attachments
-        plain_text = classified.plain_text
 
         if kind == NoteKind.TEXT_ONLY:
-            output = [writer.write_doc(safe_title, plain_text, [], note)]
+            output = [writer.write_doc(safe_title, [], note)]
 
         elif kind == NoteKind.ATTACHMENT_ONLY_SINGLE:
             att = attachments[0]
@@ -236,12 +246,12 @@ def _migrate_note(note: Note, options: MigrationOptions, writer) -> MigrationRec
                 for att in attachments:
                     label = attachment_label(att.mime)
                     counters[label] += 1
-                    filename = attachment_sibling_filename(note.title, label, counters[label], att)
+                    filename = attachment_sibling_filename(eff_title, label, counters[label], att)
                     output.append(writer.write_raw_file(filename, att.data, att.mime, note))
             else:
                 has_siblings = _has_doc_siblings(attachments, policy)
                 doc_title = f"{safe_title}_0" if has_siblings else safe_title
-                output = [writer.write_doc(doc_title, "", attachments, note, policy)]
+                output = [writer.write_doc(doc_title, attachments, note, policy)]
 
         elif kind == NoteKind.TEXT_WITH_ATTACHMENTS:
             # FILES implies BOTH for text notes: the doc must exist for the text,
@@ -249,7 +259,7 @@ def _migrate_note(note: Note, options: MigrationOptions, writer) -> MigrationRec
             effective = AttachmentPolicy.BOTH if policy == AttachmentPolicy.FILES else policy
             has_siblings = _has_doc_siblings(attachments, effective)
             doc_title = f"{safe_title}_0" if has_siblings else safe_title
-            output = [writer.write_doc(doc_title, plain_text, attachments, note, effective)]
+            output = [writer.write_doc(doc_title, attachments, note, effective)]
 
         else:
             raise ValueError(f"Unhandled note kind: {kind}")
