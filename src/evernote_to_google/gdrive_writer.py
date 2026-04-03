@@ -84,10 +84,11 @@ def _enml_to_html(
 
 
 class GDriveWriter:
-    def __init__(self, dest: str, policy: "AttachmentPolicy") -> None:
+    def __init__(self, dest: str, policy: "AttachmentPolicy", include_tags: bool = True) -> None:
         self._drive = get_services()
         self._dest = dest
         self._policy = policy
+        self._include_tags = include_tags
         self._folder_cache: dict[str, tuple[str, str]] = {}
         self._file_cache: dict[str, set[str]] = {}  # notebook_id -> set of file names
 
@@ -114,7 +115,7 @@ class GDriveWriter:
         policy = policy or self._policy
         _log.debug("going to write note %r as gdoc (%d attachments)", rtl_display(title), len(attachments))
         parent_id = self._notebook_id(note)
-        desc = make_description(note.created, note.source_url)
+        desc = make_description(note.created, note.source_url, tags=note.tags if self._include_tags else None)
         mtime = note.updated or note.created
 
         # Phase 1: upload all attachments and build URL maps
@@ -199,6 +200,6 @@ class GDriveWriter:
             data=data,
             mime_type=mime_type,
             parent_id=self._notebook_id(note),
-            description=make_description(note.created, note.source_url),
+            description=make_description(note.created, note.source_url, tags=note.tags if self._include_tags else None),
             modified_time=note.updated or note.created,
         )

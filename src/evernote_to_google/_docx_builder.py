@@ -185,9 +185,11 @@ def _compact_doc_spacing(doc: Document) -> None:
         spacing.set(qn("w:lineRule"), "auto")
 
 
-def _build_html(note: Note, hash_map: dict[str, Attachment]) -> str:
+def _build_html(note: Note, hash_map: dict[str, Attachment], include_tags: bool = True) -> str:
     """Assemble the HTML string to feed into html4docx."""
     parts = []
+    if include_tags and note.tags:
+        parts.append(f'<p>Tags: {", ".join(note.tags)}</p>')
     if note.source_url:
         url = note.source_url
         parts.append(f'<p>Source: <a href="{url}">{url}</a></p>')
@@ -262,12 +264,12 @@ def _strip_trailing_blanks(doc: Document) -> None:
 
 # ── public API ────────────────────────────────────────────────────────────────
 
-def build_doc(note: Note, attachments: list[Attachment]) -> Document:
+def build_doc(note: Note, attachments: list[Attachment], include_tags: bool = True) -> Document:
     """Build a python-docx Document from the note's ENML. No filesystem I/O."""
     doc = Document()
     _compact_doc_spacing(doc)
     hash_map = _attachment_hash_map(attachments)
-    html = _build_html(note, hash_map)
+    html = _build_html(note, hash_map, include_tags=include_tags)
     if html.strip():
         HtmlToDocx().add_html_to_document(html, doc)
     _postprocess_paragraphs(doc)

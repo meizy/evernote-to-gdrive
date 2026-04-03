@@ -80,6 +80,8 @@ def analyze(input: Path, output_json: Path | None, mime: str | None, findnote: s
 @click.option("--log-file", type=click.Path(path_type=Path),
               default=None,
               help="Write migration log (CSV) to this file.")
+@click.option("--no-tags", is_flag=True, default=False,
+              help="Do not include Evernote tags in the output.")
 @click.option("--verbose", is_flag=True, default=False,
               help="Print a line for each note instead of a progress bar.")
 @click.option("--debug", is_flag=True, default=False,
@@ -94,6 +96,7 @@ def migrate(
     note: str | None,
     attachments: str,
     log_file: Path,
+    no_tags: bool,
     verbose: bool,
     debug: bool,
 ):
@@ -123,6 +126,7 @@ def migrate(
         note=note,
         attachments=AttachmentPolicy(attachments.lower()),
         log_file=log_file,
+        include_tags=not no_tags,
         verbose=verbose or debug,
     )
 

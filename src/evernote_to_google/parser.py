@@ -39,6 +39,7 @@ class Note:
     source_url: str | None
     # Raw ENML content string (the <content> CDATA). Empty string if absent.
     enml: str
+    tags: list[str] = field(default_factory=list)
     attachments: list[Attachment] = field(default_factory=list)
 
 
@@ -93,6 +94,7 @@ def _parse_note(note_el: etree._Element, notebook: str) -> Note:
     if content_el is not None and content_el.text:
         enml = content_el.text.strip()
 
+    tags = [t.text.strip() for t in note_el.findall("tag") if t.text]
     attachments = [_parse_resource(r) for r in note_el.findall("resource")]
 
     return Note(
@@ -103,6 +105,7 @@ def _parse_note(note_el: etree._Element, notebook: str) -> Note:
         updated=updated,
         source_url=source_url,
         enml=enml,
+        tags=tags,
         attachments=attachments,
     )
 

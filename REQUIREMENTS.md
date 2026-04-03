@@ -102,22 +102,23 @@ The stack name is derived from the subdirectory name in the `evernote-backup` ex
 | Source URL | Inserted as first line of document body |
 | Updated date | File `mtime` (local) / `modifiedTime` on Drive file (google); falls back to `created` if absent |
 
-### Local only
-
-| Field | How |
-|---|---|
-| Created date | File birthtime (macOS/Windows) |
-
 ### Google Drive only
 
 | Field | How |
 |---|---|
 | Created date | Drive file `description` field — `Created: YYYY-MM-DD HH:MM UTC` (Drive API does not allow setting `createdTime`) |
 | Source URL | Also appended to Drive file `description` field, in addition to the document body |
+| Tags | Appended to Drive file `description` field as `Tags: tag1, tag2` (disable with `--no-tags`) |
+
+### Local only (in addition to the common fields above)
+
+| Field | How |
+|---|---|
+| Created date | File birthtime (macOS/Windows) |
+| Tags | Written as `Tags: tag1, tag2` on the first line of the `.docx` body (disable with `--no-tags`) |
 
 ### Not preserved
 
-- **Tags** — no meaningful equivalent in Google Drive
 - **Author, geolocation, reminders, encrypted content** — not extracted from ENEX
 
 ### Content processing

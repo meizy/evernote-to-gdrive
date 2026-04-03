@@ -235,12 +235,18 @@ def list_folder_files(drive, parent_id: str) -> set[str]:
     return names
 
 
-def make_description(note_created: datetime | None, source_url: str | None) -> str:
+def make_description(
+    note_created: datetime | None,
+    source_url: str | None,
+    tags: list[str] | None = None,
+) -> str:
     parts: list[str] = []
     if note_created:
         parts.append(f"Created: {note_created.strftime('%Y-%m-%d %H:%M UTC')}")
     if source_url:
         parts.append(f"Source: {source_url}")
+    if tags:
+        parts.append(f"Tags: {', '.join(tags)}")
     return "\n".join(parts)
 
 

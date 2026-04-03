@@ -74,6 +74,7 @@ class MigrationOptions:
     note: str | None              # if set, only migrate this one note title
     attachments: AttachmentPolicy
     log_file: Path | None
+    include_tags: bool = True
     verbose: bool = False
 
 
@@ -116,10 +117,10 @@ def run_migration(input_path: Path, options: MigrationOptions) -> list[Migration
 
     if options.output_mode == OutputMode.GOOGLE:
         from .gdrive_writer import GDriveWriter
-        writer = GDriveWriter(options.dest, options.attachments)
+        writer = GDriveWriter(options.dest, options.attachments, include_tags=options.include_tags)
     else:
         from .local_writer import LocalWriter
-        writer = LocalWriter(Path(options.dest), options.attachments)
+        writer = LocalWriter(Path(options.dest), options.attachments, include_tags=options.include_tags)
 
     if options.dry_run:
         root_id = writer.dry_run()

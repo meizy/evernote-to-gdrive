@@ -172,9 +172,10 @@ def _save_doc(doc, path: Path, note: Note) -> Path:
 # ── public API ────────────────────────────────────────────────────────────────
 
 class LocalWriter:
-    def __init__(self, output_dir: Path, policy: "AttachmentPolicy") -> None:
+    def __init__(self, output_dir: Path, policy: "AttachmentPolicy", include_tags: bool = True) -> None:
         self._output_dir = output_dir
         self._policy = policy
+        self._include_tags = include_tags
 
     def note_exists(self, note: Note, safe_title: str) -> bool:
         folder = note_folder(self._output_dir, note)
@@ -185,7 +186,7 @@ class LocalWriter:
     def write_doc(self, title: str, attachments: list[Attachment], note: Note, policy: "AttachmentPolicy | None" = None) -> str:
         policy = policy or self._policy
         folder = note_folder(self._output_dir, note)
-        doc = build_doc(note, attachments)
+        doc = build_doc(note, attachments, include_tags=self._include_tags)
         if attachments:
             _write_sibling_files(doc, attachments, note.title, folder, note, policy)
         dest = _save_doc(doc, folder / f"{title}.docx", note)
