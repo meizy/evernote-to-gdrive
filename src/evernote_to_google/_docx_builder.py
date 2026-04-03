@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import io
 import logging
 import re
 
@@ -125,6 +126,29 @@ def add_file_hyperlink(doc: Document, display_text: str, filename: str) -> None:
         _set_para_rtl(paragraph)
 
 
+# ── image utilities ───────────────────────────────────────────────────────────
+
+def _apply_exif_orientation(data: bytes, mime: str) -> bytes:
+    """Return image bytes with EXIF orientation applied (pixels rotated as needed).
+
+    Falls back to the original bytes on any error or if the image has no EXIF.
+    Only meaningful for JPEG; PNG/GIF/WebP don't carry EXIF orientation in practice.
+    """
+    if mime != "image/jpeg":
+        return data
+    try:
+        from PIL import Image, ImageOps
+        img = Image.open(io.BytesIO(data))
+        rotated = ImageOps.exif_transpose(img)
+        if rotated is img:          # no-op: no orientation tag present
+            return data
+        buf = io.BytesIO()
+        rotated.save(buf, format="JPEG")
+        return buf.getvalue()
+    except Exception:
+        return data
+
+
 # ── ENML → HTML ───────────────────────────────────────────────────────────────
 
 def _attachment_hash_map(attachments: list[Attachment]) -> dict[str, Attachment]:
@@ -148,7 +172,8 @@ def _sanitize_enml(enml: str, hash_map: dict[str, Attachment], title: str = "") 
             return ''
         att = hash_map.get(h)
         if att and mime in _EMBEDDABLE_IMAGE_MIME:
-            b64 = base64.b64encode(att.data).decode()
+            img_data = _apply_exif_orientation(att.data, mime)
+            b64 = base64.b64encode(img_data).decode()
             width_match = re.search(r'\bwidth="(\d+)"', tag)
             w = int(width_match.group(1)) if width_match else None
             if w is None or w > _MAX_WIDTH:
@@ -262,6 +287,16 @@ def _strip_trailing_blanks(doc: Document) -> None:
         last._element.getparent().remove(last._element)
 
 
+def _strip_leading_blanks(doc: Document) -> None:
+    """Remove leading empty paragraphs (no text, no image) from the document."""
+    while doc.paragraphs:
+        first = doc.paragraphs[0]
+        has_image = any(r._r.find('.//' + qn('a:graphicData')) is not None for r in first.runs)
+        if first.text.strip() or has_image:
+            break
+        first._element.getparent().remove(first._element)
+
+
 # ── public API ────────────────────────────────────────────────────────────────
 
 def build_doc(note: Note, attachments: list[Attachment], include_tags: bool = True) -> Document:
@@ -274,5 +309,6 @@ def build_doc(note: Note, attachments: list[Attachment], include_tags: bool = Tr
         HtmlToDocx().add_html_to_document(html, doc)
     _postprocess_paragraphs(doc)
     _cap_image_sizes(doc)
+    _strip_leading_blanks(doc)
     _strip_trailing_blanks(doc)
     return doc

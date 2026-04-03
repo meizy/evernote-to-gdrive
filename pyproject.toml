@@ -16,6 +16,7 @@ dependencies = [
     "rich>=13.0",
     "html4docx @ git+https://github.com/dfop02/html4docx.git",
     "python-docx>=1.1",
+    "Pillow>=10.0",
 ]
 
 [project.scripts]
