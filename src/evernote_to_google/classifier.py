@@ -8,6 +8,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum, auto
 
+from ._enml import enml_to_text
 from .parser import Attachment, Note
 
 
@@ -31,14 +32,6 @@ class ClassifiedNote:
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
-
-def enml_to_text(enml: str) -> str:
-    """Extract plain text from ENML for classification purposes."""
-    if not enml:
-        return ""
-    text = re.sub(r"<[^>]+>", " ", enml)
-    return " ".join(text.split())
-
 
 def has_meaningful_text(plain_text: str) -> bool:
     return bool(plain_text)

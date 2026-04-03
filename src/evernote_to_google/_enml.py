@@ -36,6 +36,14 @@ _RE_HASH = re.compile(r'\bhash="([0-9a-fA-F]+)"')
 _RE_MIME = re.compile(r'\btype="([^"]+)"')
 
 
+def enml_to_text(enml: str) -> str:
+    """Extract plain text from ENML by stripping all tags."""
+    if not enml:
+        return ""
+    text = re.sub(r"<[^>]+>", " ", enml)
+    return " ".join(text.split())
+
+
 def parse_media_tag(tag: str) -> tuple[str | None, str | None]:
     """Return (hash, mime_type) extracted from an <en-media> tag string."""
     h = _RE_HASH.search(tag)
