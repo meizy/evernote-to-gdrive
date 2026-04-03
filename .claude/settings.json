@@ -13,11 +13,11 @@
       "Read(//<title>החמישיה הפותחת: המאפיות הטובות בתל אביב<\\\\/title>/,/<\\\\/note>/{if \\(/en-media/**)",
       "Bash(perl -pe 's/<[^>]+>//g')",
       "Bash(python test_html_import.py)",
-      "Bash(python -c \":*)",
-      "Bash(python -c \"import html4docx; import os; print\\(os.path.dirname\\(html4docx.__file__\\)\\)\")",
-      "Bash(python -m pytest tests/ -x -q)",
-      "Bash(.venv/bin/pytest tests/ -x -q)",
-      "Bash(python -m pytest tests/test_enml.py -v)"
+      "Bash(python -m pytest:*)",
+      "Bash(pytest:*)",
+      "Bash(.venv/bin/pytest:*)",
+      "Bash(python -m evernote_to_google.cli analyze:*)",
+      "Bash(python -c ':*)"
     ],
     "additionalDirectories": [
       "/Users/moshe/.claude"
