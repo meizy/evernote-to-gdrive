@@ -82,10 +82,11 @@ def sanitize_enml(
     html = _RE_XML_DECL.sub("", enml.strip())
     html = _RE_DOCTYPE.sub("", html)
     html = _RE_EN_NOTE.sub("", html)
+    html = _strip_external_images(html, title)  # strip before replace_media inserts Drive URLs
     html = _RE_EN_MEDIA_SC.sub(replace_media, html)
     html = _RE_EN_MEDIA_PAIRED.sub(replace_media, html)
     html = _RE_EN_CRYPT.sub("", html)
     html = _RE_TODO_CHECKED.sub("[x]\u00a0", html)
     html = _RE_TODO_UNCHECKED.sub("[\u00a0]\u00a0", html)
-    html = _strip_external_images(html, title)
+    html = re.sub(r'^(\s*<div>\s*<br\s*/?>\s*</div>\s*)+', '', html)
     return html.strip()

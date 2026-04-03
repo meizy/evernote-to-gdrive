@@ -25,6 +25,7 @@ _log = logging.getLogger(__name__)
 from .auth import get_services
 from .display import rtl_display
 from ._enml import sanitize_enml, parse_media_tag
+from ._image import apply_exif_orientation
 from .classifier import (
     _EMBEDDABLE_IMAGE_MIME,
     attachment_label,
@@ -54,6 +55,7 @@ def _enml_to_html(
     hash_to_img_url: dict[str, str],
     hash_to_link: dict[str, tuple[str, str]],
     source_url: str | None = None,
+    title: str = "",
 ) -> bytes:
     """
     Convert ENML to HTML suitable for Drive's import converter.
@@ -64,18 +66,21 @@ def _enml_to_html(
       <p><a href="...">filename</a></p> for other attachments
     - Prepends a source URL link when present
     """
+    _MAX_WIDTH = 500  # px — fits a standard Google Doc page with margins
+
     def _replace(m: re.Match) -> str:
         h, _ = parse_media_tag(m.group(0))
         if not h:
             return ""
         if h in hash_to_img_url:
-            return f'<p style="text-align:center"><img src="{hash_to_img_url[h]}"/></p>'
+            return (f'<p style="text-align:center">'
+                    f'<img src="{hash_to_img_url[h]}" width="{_MAX_WIDTH}px"/></p>')
         if h in hash_to_link:
             filename, url = hash_to_link[h]
             return f'<p><a href="{url}">[{filename}]</a></p>'
         return ""
 
-    html = sanitize_enml(enml, _replace)
+    html = sanitize_enml(enml, _replace, title=title)
     html = f"<div>{html}</div>"
     if source_url:
         header = f'<p>Source: <a href="{source_url}">{source_url}</a></p>'
@@ -134,10 +139,11 @@ class GDriveWriter:
             counters[label] += 1
             filename = attachment_sibling_filename(note.title, label, counters[label], att)
 
+            upload_data = apply_exif_orientation(att.data, att.mime) if att.mime in _EMBEDDABLE_IMAGE_MIME else att.data
             file_id = upload_file(
                 self._drive,
                 name=filename,
-                data=att.data,
+                data=upload_data,
                 mime_type=att.mime,
                 parent_id=parent_id,
                 description=desc,
@@ -169,7 +175,7 @@ class GDriveWriter:
                 _log.debug("image file %s made public", fid)
 
         # Phase 2: build HTML and import as Google Doc
-        html = _enml_to_html(note.enml, hash_to_img_url, hash_to_link, note.source_url)
+        html = _enml_to_html(note.enml, hash_to_img_url, hash_to_link, note.source_url, title=note.title)
         doc_id = create_doc(
             self._drive,
             title=title,

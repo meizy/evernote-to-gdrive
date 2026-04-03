@@ -10,7 +10,7 @@ from pathlib import Path
 import click
 from rich.console import Console
 
-from .analyze import find_note, list_notes_by_mime, print_report, report_duplicates, run_analysis, save_json
+from .analyze import find_note, list_notes_by_mime, print_report, report_duplicates, report_tags as report_tags_fn, run_analysis, save_json
 from .migrate import AttachmentPolicy, MigrationOptions, OutputMode, run_migration
 
 console = Console()
@@ -33,7 +33,9 @@ def main():
               help="Report which notebook(s) contain a note with this title.")
 @click.option("--report-dups", is_flag=True, default=False,
               help="List all notes with duplicate titles within the same notebook.")
-def analyze(input: Path, output_json: Path | None, mime: str | None, findnote: str | None, report_dups: bool):
+@click.option("--report-tags", "report_tags", is_flag=True, default=False,
+              help="List all tags with a count of notes per tag, sorted by count.")
+def analyze(input: Path, output_json: Path | None, mime: str | None, findnote: str | None, report_dups: bool, report_tags: bool):
     """Inspect .enex files and report statistics (no upload)."""
     console.print(f"[dim]Reading: {input}")
     if mime:
@@ -44,6 +46,9 @@ def analyze(input: Path, output_json: Path | None, mime: str | None, findnote: s
         return
     if report_dups:
         report_duplicates(input)
+        return
+    if report_tags:
+        report_tags_fn(input)
         return
     result = run_analysis(input)
     print_report(result)

@@ -115,7 +115,7 @@ The stack name is derived from the subdirectory name in the `evernote-backup` ex
 | Field | How |
 |---|---|
 | Created date | File birthtime (macOS/Windows) |
-| Tags | Written as `Tags: tag1, tag2` on the first line of the `.docx` body (disable with `--no-tags`) |
+| Tags | Written as `[Tags: tag1, tag2]` on the first line of the `.docx` body (disable with `--no-tags`) |
 
 ### Not preserved
 
@@ -189,6 +189,7 @@ evernote-to-gdrive analyze INPUT [OPTIONS]
   --mime MIME_TYPE       List notes that have an attachment of this MIME type
   --findnote TITLE      Find which notebook(s) contain a note with a given title
   --report-dups         List all notes with duplicate titles within the same notebook
+  --report-tags         List all tags with a count of notes per tag, sorted by count descending
 
 evernote-to-gdrive migrate INPUT [OPTIONS]
   --output [gdrive|local]    Output mode [default: gdrive]

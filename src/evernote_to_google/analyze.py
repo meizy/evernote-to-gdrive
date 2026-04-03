@@ -273,6 +273,28 @@ def report_duplicates(input_path: Path) -> None:
     console.print(f"\n[yellow]{len(dups)} group(s) with duplicates — {total} note(s) will be renamed during migration (local: ' (2)' suffix; gdrive: same name kept).")
 
 
+def report_tags(input_path: Path) -> None:
+    tag_counts: dict[str, int] = defaultdict(int)
+    for note in load_notes(input_path):
+        for tag in note.tags:
+            tag_counts[tag] += 1
+
+    if not tag_counts:
+        console.print("[yellow]No tags found.")
+        return
+
+    sorted_tags = sorted(tag_counts.items(), key=lambda x: x[1], reverse=True)
+
+    table = Table(title="Tags by Note Count")
+    table.add_column("Tag", style="bold")
+    table.add_column("Notes", justify="right")
+    for tag, count in sorted_tags:
+        table.add_row(rtl_display(tag), str(count))
+    console.print()
+    console.print(table)
+    console.print(f"\n[dim]{len(tag_counts)} unique tag(s).")
+
+
 def save_json(result: AnalysisResult, path: Path) -> None:
     # Convert defaultdicts to plain dicts for JSON serialization
     data = {
