@@ -182,7 +182,7 @@ class LocalWriter:
             return (folder / safe_title).exists()
         return any(folder.glob(f"{safe_title}.*")) or any(folder.glob(f"{safe_title}_0.*"))
 
-    def write_doc(self, title: str, plain_text: str, attachments: list[Attachment], note: Note, policy: "AttachmentPolicy | None" = None) -> str:
+    def write_doc(self, title: str, attachments: list[Attachment], note: Note, policy: "AttachmentPolicy | None" = None) -> str:
         policy = policy or self._policy
         folder = note_folder(self._output_dir, note)
         doc = build_doc(note, attachments)

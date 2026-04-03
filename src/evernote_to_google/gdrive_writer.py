@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import logging
 import re
-import sys
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
@@ -25,6 +24,7 @@ _log = logging.getLogger(__name__)
 
 from .auth import get_services
 from .display import rtl_display
+from ._enml import sanitize_enml, parse_media_tag
 from .classifier import (
     _EMBEDDABLE_IMAGE_MIME,
     attachment_label,
@@ -59,49 +59,27 @@ def _enml_to_html(
     Convert ENML to HTML suitable for Drive's import converter.
 
     - Strips <?xml> declaration and <!DOCTYPE>
-    - Replaces <en-note> wrapper with <div>
+    - Strips <en-note> wrapper (re-wrapped in <div> below)
     - Replaces <en-media> with <p><img src="..."/></p> for images, or
       <p><a href="...">filename</a></p> for other attachments
     - Prepends a source URL link when present
     """
-    html = enml.strip()
-    html = re.sub(r"<\?xml[^?]*\?>\s*", "", html)
-    html = re.sub(r"<!DOCTYPE[^>]*>\s*", "", html, flags=re.IGNORECASE)
-    html = re.sub(r"<en-note\b[^>]*>", "<div>", html, count=1)
-    html = html.replace("</en-note>", "</div>")
-
-    def _replace_media(m: re.Match) -> str:
-        tag = m.group(0)
-        h = re.search(r'\bhash="([0-9a-fA-F]+)"', tag)
+    def _replace(m: re.Match) -> str:
+        h, _ = parse_media_tag(m.group(0))
         if not h:
             return ""
-        hash_val = h.group(1)
-        if hash_val in hash_to_img_url:
-            return f'<p style="text-align:center"><img src="{hash_to_img_url[hash_val]}"/></p>'
-        if hash_val in hash_to_link:
-            filename, url = hash_to_link[hash_val]
+        if h in hash_to_img_url:
+            return f'<p style="text-align:center"><img src="{hash_to_img_url[h]}"/></p>'
+        if h in hash_to_link:
+            filename, url = hash_to_link[h]
             return f'<p><a href="{url}">[{filename}]</a></p>'
         return ""
 
-    html = re.sub(r"<en-media\b[^>]*/?>", _replace_media, html)
-
-    # Strip encrypted blocks
-    html = re.sub(r"<en-crypt\b[^>]*>.*?</en-crypt>", "", html, flags=re.DOTALL)
-    # Convert checkboxes to text markers
-    html = re.sub(r'<en-todo\b[^>]*checked="true"[^>]*/>', "[x]\u00a0", html)
-    html = re.sub(r"<en-todo\b[^>]*/?>", "[\u00a0]\u00a0", html)
-    # Strip external <img> tags (Drive importer may fail to fetch remote URLs)
-    external_imgs = re.findall(r'<img\b[^>]*\bsrc="(https?://[^"]*)"[^>]*/?>',  html, flags=re.IGNORECASE)
-    if external_imgs:
-        _log.warning("note: %d external image(s) skipped (not embeddable)", len(external_imgs))
-        print(f"WARNING: {len(external_imgs)} external image(s) skipped (not embeddable)", file=sys.stderr, flush=True)
-    html = re.sub(r'<img\b[^>]*\bsrc="https?://[^"]*"[^>]*/>', "", html, flags=re.IGNORECASE)
-    html = re.sub(r'<img\b[^>]*\bsrc="https?://[^"]*"[^>]*>', "", html, flags=re.IGNORECASE)
-
+    html = sanitize_enml(enml, _replace)
+    html = f"<div>{html}</div>"
     if source_url:
         header = f'<p>Source: <a href="{source_url}">{source_url}</a></p>'
         html = html.replace("<div>", f"<div>{header}", 1)
-
     return html.encode("utf-8")
 
 
@@ -132,7 +110,7 @@ class GDriveWriter:
         notebook_id = self._notebook_id(note)
         return safe_title in self._file_cache.get(notebook_id, set())
 
-    def write_doc(self, title: str, plain_text: str, attachments: list[Attachment], note: Note, policy: "AttachmentPolicy | None" = None) -> str:
+    def write_doc(self, title: str, attachments: list[Attachment], note: Note, policy: "AttachmentPolicy | None" = None) -> str:
         policy = policy or self._policy
         _log.debug("going to write note %r as gdoc (%d attachments)", rtl_display(title), len(attachments))
         parent_id = self._notebook_id(note)

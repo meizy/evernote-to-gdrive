@@ -11,7 +11,6 @@ import base64
 import hashlib
 import logging
 import re
-import sys
 
 from docx import Document
 from docx.oxml import OxmlElement
@@ -21,6 +20,7 @@ from html4docx import HtmlToDocx
 import html4docx.utils as _h4d_utils
 
 from .classifier import _EMBEDDABLE_IMAGE_MIME, _is_rtl
+from ._enml import sanitize_enml, parse_media_tag
 from .parser import Attachment, Note
 
 
@@ -139,45 +139,24 @@ def _sanitize_enml(enml: str, hash_map: dict[str, Attachment], title: str = "") 
     - <en-media> for other types (PDF etc.) → removed (handled as sibling files)
     - ENML-specific tags stripped; standard HTML preserved.
     """
-    html = re.sub(r'<\?xml[^>]*\?>', '', enml)
-    html = re.sub(r'<!DOCTYPE[^>]*>', '', html)
+    _MAX_WIDTH = 500  # px — fits a standard docx page with margins
 
-    def replace_en_media(m: re.Match) -> str:
+    def _replace(m: re.Match) -> str:
         tag = m.group(0)
-        hash_match = re.search(r'hash="([0-9a-f]+)"', tag)
-        type_match = re.search(r'type="([^"]+)"', tag)
-        if not hash_match or not type_match:
+        h, mime = parse_media_tag(tag)
+        if not h or not mime:
             return ''
-        h, mime = hash_match.group(1), type_match.group(1)
         att = hash_map.get(h)
         if att and mime in _EMBEDDABLE_IMAGE_MIME:
             b64 = base64.b64encode(att.data).decode()
             width_match = re.search(r'\bwidth="(\d+)"', tag)
             w = int(width_match.group(1)) if width_match else None
-            _MAX_WIDTH = 500  # px — fits a standard docx page with margins
             if w is None or w > _MAX_WIDTH:
                 w = _MAX_WIDTH
             return f'<img src="data:{mime};base64,{b64}" width="{w}px"/>'
         return ''  # non-image or unknown hash — drop it
 
-    html = re.sub(r'<en-media\b[^>]*/>', replace_en_media, html)
-    html = re.sub(r'<en-media\b[^>]*>.*?</en-media>', replace_en_media, html, flags=re.DOTALL)
-    # Remove <img> tags with external URLs — python-docx cannot fetch remote images,
-    # and web-clipped notes sometimes reference Evernote's CDN instead of embedding data.
-    external_imgs = re.findall(r'<img\b[^>]*\bsrc="(https?://[^"]*)"[^>]*/?>', html, flags=re.IGNORECASE)
-    if external_imgs:
-        note_label = f" {title!r}" if title else ""
-        print(f"WARNING:{note_label}: {len(external_imgs)} external image(s) skipped (not retrievable)", file=sys.stderr, flush=True)
-    html = re.sub(r'<img\b[^>]*\bsrc="https?://[^"]*"[^>]*/>', '', html, flags=re.IGNORECASE)
-    html = re.sub(r'<img\b[^>]*\bsrc="https?://[^"]*"[^>]*>', '', html, flags=re.IGNORECASE)
-    # Remove encrypted blocks
-    html = re.sub(r'<en-crypt\b[^>]*>.*?</en-crypt>', '', html, flags=re.DOTALL)
-    # Convert checkboxes to text markers
-    html = re.sub(r'<en-todo\b[^>]*checked="true"[^>]*/>', '[x]\u00a0', html)
-    html = re.sub(r'<en-todo\b[^>]*/>', '[\u00a0]\u00a0', html)
-    # Strip the ENML root tag (unknown tags confuse html4docx)
-    html = re.sub(r'</?en-note\b[^>]*>', '', html)
-    return html.strip()
+    return sanitize_enml(enml, _replace, title=title)
 
 
 # ── document post-processing ──────────────────────────────────────────────────
