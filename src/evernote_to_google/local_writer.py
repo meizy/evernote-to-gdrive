@@ -17,6 +17,7 @@ import ctypes
 import ctypes.util
 import ctypes.wintypes
 import os
+import glob as glob_module
 import platform
 import struct
 from collections import defaultdict
@@ -177,11 +178,14 @@ class LocalWriter:
         self._policy = policy
         self._include_tags = include_tags
 
-    def note_exists(self, note: Note, safe_title: str) -> bool:
+    def note_exists(self, note: Note, safe_title: str, exact: bool = False) -> bool:
         folder = note_folder(self._output_dir, note)
-        if Path(safe_title).suffix:
+        if exact:
             return (folder / safe_title).exists()
-        return any(folder.glob(f"{safe_title}.*")) or any(folder.glob(f"{safe_title}_0.*"))
+        escaped = glob_module.escape(safe_title)
+        return ((folder / safe_title).exists()
+                or any(folder.glob(f"{escaped}.*"))
+                or any(folder.glob(f"{escaped}_0.*")))
 
     def write_doc(self, title: str, attachments: list[Attachment], note: Note, policy: "AttachmentPolicy | None" = None) -> str:
         policy = policy or self._policy

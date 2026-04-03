@@ -112,7 +112,7 @@ class GDriveWriter:
         _, notebook_id = self._folder_cache[cache_key]
         return notebook_id
 
-    def note_exists(self, note: Note, safe_title: str) -> bool:
+    def note_exists(self, note: Note, safe_title: str, exact: bool = False) -> bool:
         notebook_id = self._notebook_id(note)
         return safe_title in self._file_cache.get(notebook_id, set())
 

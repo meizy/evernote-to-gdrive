@@ -2,15 +2,26 @@
 
 ## Overview
 
-A Python CLI tool (`evernote-to-gdrive`) that migrates Evernote notes to Google Drive, preserving content structure and organization.
+A Python CLI tool (`evernote-to-gdrive`) that migrates Evernote notes to Google Drive, preserving content structure and organization. Designed for **one-time migration** from Evernote — not for ongoing synchronization between the two platforms.
 
 ## Input
 
-Evernote exports notes as `.enex` files (Evernote XML format). The user exports notebooks from the Evernote desktop/web app, producing one `.enex` file per notebook (or one for all notes).
+The tool expects a **directory of `.enex` files**, one per notebook. Evernote's desktop app can export each notebook individually to produce this layout.
 
-The tool accepts:
-- A single `.enex` file
-- A directory of `.enex` files (one per notebook)
+To preserve **stack hierarchy**, nest notebook exports inside subdirectories named after the stack:
+
+```
+export/
+  Startups/              ← stack directory
+    Funding.enex         ← notebook in "Startups" stack
+    ScaleDB.enex
+  Seculert.enex          ← notebook with no stack
+```
+
+- `export/<notebook>.enex` → notebook folder directly under the migration root
+- `export/<stack>/<notebook>.enex` → notebook folder inside a stack folder
+
+A single `.enex` file is also accepted, but all notes will be placed in one folder (the file's basename) with no stack/notebook structure.
 
 ## Note Classification & Output Mapping
 

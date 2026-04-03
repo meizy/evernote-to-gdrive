@@ -211,6 +211,11 @@ def _migrate_note(note: Note, options: MigrationOptions, writer, seen: dict[tupl
             if options.output_mode == OutputMode.LOCAL:
                 eff_title = f"{note.title} ({seen[key]})"
                 safe_title = _safe_name(eff_title)
+                if writer.note_exists(note, safe_title):
+                    return MigrationRecord(
+                        notebook=note.notebook, title=note.title, kind=kind_label,
+                        status=MigrationStatus.SKIPPED, output=[],
+                    )
             # gdrive: keep original name — Drive allows same-name files
         else:
             seen[key] = 1
@@ -224,7 +229,9 @@ def _migrate_note(note: Note, options: MigrationOptions, writer, seen: dict[tupl
             else:
                 check_name = safe_title
 
-            if writer.note_exists(note, check_name):
+            is_full_filename = (classified.kind == NoteKind.ATTACHMENT_ONLY_MULTI
+                                and policy == AttachmentPolicy.FILES)
+            if writer.note_exists(note, check_name, exact=is_full_filename):
                 return MigrationRecord(
                     notebook=note.notebook, title=note.title, kind=kind_label,
                     status=MigrationStatus.SKIPPED, output=[],
