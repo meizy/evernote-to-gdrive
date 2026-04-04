@@ -217,10 +217,11 @@ class GDriveWriter:
         del self._deferred_img_url, self._deferred_link, self._deferred_image_ids
         return state
 
-    def rewrite_interlinks(self, deferred: DeferredNote, title_to_doc_id: dict[str, str]) -> tuple[int, int]:
+    def rewrite_interlinks(self, deferred: DeferredNote, title_to_doc_id: dict[str, str],
+                           duplicate_titles: set[str] | None = None) -> tuple[int, int]:
         """Rewrite inter-note links in a previously-migrated doc and update it in place."""
         rewritten_enml, resolved, unresolved = rewrite_evernote_links(
-            deferred.enml, title_to_doc_id, note_title=deferred.title,
+            deferred.enml, title_to_doc_id, note_title=deferred.title, duplicate_titles=duplicate_titles,
         )
         html = _enml_to_html(
             rewritten_enml,

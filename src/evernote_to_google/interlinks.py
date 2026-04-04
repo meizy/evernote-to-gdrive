@@ -52,6 +52,7 @@ def rewrite_evernote_links(
     enml: str,
     title_to_doc_id: dict[str, str],
     note_title: str = "",
+    duplicate_titles: set[str] | None = None,
 ) -> tuple[str, int, int]:
     """
     Replace evernote:///view/... links in ENML with Google Doc URLs.
@@ -71,6 +72,12 @@ def rewrite_evernote_links(
         doc_id = title_to_doc_id.get(title)
         if doc_id:
             resolved += 1
+            if duplicate_titles and title in duplicate_titles:
+                _log.warning(
+                    "note %r: inter-note link to %r resolved but title has duplicates — may point to wrong doc",
+                    note_title,
+                    title,
+                )
             return f'<a href="{_GDOC_URL.format(doc_id)}">{inner}</a>'
         else:
             unresolved += 1

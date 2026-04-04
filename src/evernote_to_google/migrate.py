@@ -68,18 +68,20 @@ def _apply_filters(structure: list[NotebookInfo], options: MigrationOptions) -> 
     return filtered
 
 
-def _collect_title(record: MigrationRecord, title_to_doc_id: dict[str, str] | None) -> None:
+def _collect_title(record: MigrationRecord, title_to_doc_id: dict[str, str] | None,
+                   duplicate_titles: set[str] | None) -> None:
     """Add a successfully migrated doc's title -> doc_id to the map."""
     if title_to_doc_id is None or record.status != MigrationStatus.SUCCESS or not record.output:
         return
     existing = title_to_doc_id.get(record.title)
-    if existing and existing != record.output[0]:
-        _log.warning("duplicate note title %s — inter-note links may resolve to wrong doc", rtl_display(record.title))
+    if existing and existing != record.output[0] and duplicate_titles is not None:
+        duplicate_titles.add(record.title)
     title_to_doc_id[record.title] = record.output[0]
 
 
 def _run_verbose(filtered: list[NotebookInfo], options: MigrationOptions, writer, seen: dict, records: list,
-                 deferred_notes: list[DeferredNote] | None, title_to_doc_id: dict[str, str] | None) -> None:
+                 deferred_notes: list[DeferredNote] | None, title_to_doc_id: dict[str, str] | None,
+                 duplicate_titles: set[str] | None) -> None:
     gdrive = options.output_mode == OutputMode.GOOGLE
     for info in filtered:
         nb_start = time.monotonic()
@@ -96,7 +98,7 @@ def _run_verbose(filtered: list[NotebookInfo], options: MigrationOptions, writer
                                   deferred_notes=deferred_notes)
             elapsed = time.monotonic() - t0
             records.append(record)
-            _collect_title(record, title_to_doc_id)
+            _collect_title(record, title_to_doc_id, duplicate_titles)
             nb_count += 1
             label = f"[cyan]{rtl_display(note.notebook)}[/] / {rtl_display(note.title)}"
             if record.status == MigrationStatus.SKIPPED:
@@ -113,7 +115,8 @@ def _run_verbose(filtered: list[NotebookInfo], options: MigrationOptions, writer
 
 
 def _run_progress(filtered: list[NotebookInfo], total: int, options: MigrationOptions, writer, seen: dict, records: list,
-                  deferred_notes: list[DeferredNote] | None, title_to_doc_id: dict[str, str] | None) -> None:
+                  deferred_notes: list[DeferredNote] | None, title_to_doc_id: dict[str, str] | None,
+                  duplicate_titles: set[str] | None) -> None:
     with Progress(
         TextColumn("[progress.description]{task.description}", table_column=Column(width=55, no_wrap=True)),
         BarColumn(),
@@ -130,19 +133,19 @@ def _run_progress(filtered: list[NotebookInfo], total: int, options: MigrationOp
                 record = migrate_note(note=note, options=options, writer=writer, seen=seen,
                                       deferred_notes=deferred_notes)
                 records.append(record)
-                _collect_title(record, title_to_doc_id)
+                _collect_title(record, title_to_doc_id, duplicate_titles)
                 progress.advance(task)
 
 
 def _rewrite_interlinks(writer, deferred: list[DeferredNote], title_to_doc_id: dict[str, str],
-                        verbose: bool = False) -> None:
+                        duplicate_titles: set[str], verbose: bool = False) -> None:
     total_resolved = total_unresolved = 0
     console.print()
     console.rule("pass 2")
     if verbose:
         for d in deferred:
             try:
-                resolved, unresolved = writer.rewrite_interlinks(d, title_to_doc_id)
+                resolved, unresolved = writer.rewrite_interlinks(d, title_to_doc_id, duplicate_titles)
                 total_resolved += resolved
                 total_unresolved += unresolved
                 console.print(f"{rtl_display(d.title)} ({resolved + unresolved} links)")
@@ -160,7 +163,7 @@ def _rewrite_interlinks(writer, deferred: list[DeferredNote], title_to_doc_id: d
             for d in deferred:
                 progress.update(task, description=f"{d.title[:55]}")
                 try:
-                    resolved, unresolved = writer.rewrite_interlinks(d, title_to_doc_id)
+                    resolved, unresolved = writer.rewrite_interlinks(d, title_to_doc_id, duplicate_titles)
                     total_resolved += resolved
                     total_unresolved += unresolved
                 except Exception as exc:
@@ -200,19 +203,22 @@ def run_migration(input_path: Path, options: MigrationOptions) -> list[Migration
     do_interlinks = gdrive and not options.skip_note_links and not options.note
     deferred_notes: list[DeferredNote] | None = [] if do_interlinks else None
     title_to_doc_id: dict[str, str] | None = {} if do_interlinks else None
+    duplicate_titles: set[str] | None = set() if do_interlinks else None
 
     try:
         if options.verbose:
-            _run_verbose(filtered, options, writer, seen, records, deferred_notes, title_to_doc_id)
+            _run_verbose(filtered, options, writer, seen, records, deferred_notes, title_to_doc_id, duplicate_titles)
         else:
             total = count_notes(filtered)
-            _run_progress(filtered, total, options, writer, seen, records, deferred_notes, title_to_doc_id)
+            _run_progress(filtered, total, options, writer, seen, records, deferred_notes, title_to_doc_id,
+                          duplicate_titles)
     finally:
         if null_tmp is not None:
             shutil.rmtree(null_tmp, ignore_errors=True)
 
     if deferred_notes and title_to_doc_id is not None:
-        _rewrite_interlinks(writer, deferred_notes, title_to_doc_id, verbose=options.verbose)
+        _rewrite_interlinks(writer, deferred_notes, title_to_doc_id, duplicate_titles or set(),
+                            verbose=options.verbose)
 
     if options.note and not records:
         _log.error("note %s not found in the selected notebook(s)", rtl_display(options.note))
