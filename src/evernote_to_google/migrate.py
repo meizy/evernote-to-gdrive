@@ -5,8 +5,8 @@ Migration orchestration: classify notes and dispatch to Drive/Docs or local fold
 from __future__ import annotations
 
 import csv
+import logging
 import shutil
-import sys
 import tempfile
 import time
 from pathlib import Path
@@ -23,19 +23,13 @@ from .models import AttachmentPolicy, MigrationOptions, MigrationRecord, Migrati
 from .classifier import sanitize_name
 from .parser import NotebookInfo, count_notes, parse_enex, scan_enex_structure
 
+_log = logging.getLogger(__name__)
+
 # Re-export for callers that currently import these from migrate
 __all__ = [
     "AttachmentPolicy", "OutputMode", "MigrationStatus",
     "MigrationRecord", "MigrationOptions", "run_migration",
 ]
-
-
-def _eprint(*args, **kwargs):
-    # Use stderr directly instead of Rich's console.print for errors and warnings.
-    # Rich is a third-party library whose markup parser can silently swallow brackets
-    # in exception messages (e.g. "[Errno 2]"), and its Progress display can visually
-    # bury output written during a live render. Stderr is always reliable.
-    print(*args, file=sys.stderr, flush=True, **kwargs)
 
 
 def _apply_filters(structure: list[NotebookInfo], options: MigrationOptions) -> list[NotebookInfo] | None:
@@ -50,9 +44,9 @@ def _apply_filters(structure: list[NotebookInfo], options: MigrationOptions) -> 
         available = {s.stack for s in structure if s.stack is not None}
         missing = stack_set - available
         if missing:
-            _eprint(f"Error: stack(s) not found: {', '.join(sorted(missing))}")
+            _log.error("stack(s) not found: %s", ', '.join(sorted(missing)))
             if available:
-                _eprint(f"  Available stacks: {', '.join(sorted(available))}")
+                _log.error("  Available stacks: %s", ', '.join(sorted(available)))
             return None
         filtered = [s for s in filtered if s.stack in stack_set]
 
@@ -65,9 +59,9 @@ def _apply_filters(structure: list[NotebookInfo], options: MigrationOptions) -> 
         missing_nb = sanitized_nb_set - available_nb
         if missing_nb:
             original_missing = {sanitized_to_original[n] for n in missing_nb}
-            _eprint(f"Error: notebook(s) not found: {', '.join(rtl_display(n) for n in sorted(original_missing))}")
+            _log.error("notebook(s) not found: %s", ', '.join(rtl_display(n) for n in sorted(original_missing)))
             if available_nb:
-                _eprint(f"  Available notebooks: {', '.join(rtl_display(n) for n in sorted(available_nb))}")
+                _log.error("  Available notebooks: %s", ', '.join(rtl_display(n) for n in sorted(available_nb)))
             return None
         filtered = [s for s in filtered if s.notebook in sanitized_nb_set]
 
@@ -80,7 +74,7 @@ def _collect_title(record: MigrationRecord, title_to_doc_id: dict[str, str] | No
         return
     existing = title_to_doc_id.get(record.title)
     if existing and existing != record.output[0]:
-        _eprint(f"Warning: duplicate note title {rtl_display(record.title)!r} — inter-note links may resolve to wrong doc")
+        _log.warning("duplicate note title %s — inter-note links may resolve to wrong doc", rtl_display(record.title))
     title_to_doc_id[record.title] = record.output[0]
 
 
@@ -153,7 +147,7 @@ def _rewrite_interlinks(writer, deferred: list[DeferredNote], title_to_doc_id: d
                 total_unresolved += unresolved
                 console.print(f"{rtl_display(d.title)} ({resolved + unresolved} links)")
             except Exception as exc:
-                _eprint(f"Error rewriting links for {rtl_display(d.title)!r}: {exc}")
+                _log.error("rewriting links for %s: %s", rtl_display(d.title), exc)
     else:
         with Progress(
             TextColumn("[progress.description]{task.description}", table_column=Column(width=55, no_wrap=True)),
@@ -170,7 +164,7 @@ def _rewrite_interlinks(writer, deferred: list[DeferredNote], title_to_doc_id: d
                     total_resolved += resolved
                     total_unresolved += unresolved
                 except Exception as exc:
-                    _eprint(f"Error rewriting links for {rtl_display(d.title)!r}: {exc}")
+                    _log.error("rewriting links for %s: %s", rtl_display(d.title), exc)
                 progress.advance(task)
     console.print(f"  [dim]Links rewritten: {total_resolved} resolved, {total_unresolved} unresolved")
 
@@ -221,7 +215,7 @@ def run_migration(input_path: Path, options: MigrationOptions) -> list[Migration
         _rewrite_interlinks(writer, deferred_notes, title_to_doc_id, verbose=options.verbose)
 
     if options.note and not records:
-        _eprint(f"Error: note {rtl_display(options.note)!r} not found in the selected notebook(s).")
+        _log.error("note %s not found in the selected notebook(s)", rtl_display(options.note))
         return []
 
     if options.log_file:
@@ -262,7 +256,7 @@ def _print_summary(records: list[MigrationRecord], seen_stacks: set[str], seen_n
         console.print(f"  [red]Errors:    {errors}[/]")
         for r in records:
             if r.status == MigrationStatus.ERROR:
-                _eprint(f"  - {rtl_display(r.notebook)}/{rtl_display(r.title)}: {r.error}")
+                _log.error("  - %s/%s: %s", rtl_display(r.notebook), rtl_display(r.title), r.error)
     if is_gdrive:
         mb = get_bytes_uploaded() / (1024 * 1024)
         console.print(f"  Uploaded:  ~{mb:.1f} MB (estimate)")

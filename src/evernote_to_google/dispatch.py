@@ -4,7 +4,7 @@ Per-note classification and write dispatch.
 
 from __future__ import annotations
 
-import sys
+import logging
 from collections import defaultdict
 from dataclasses import replace as dc_replace
 
@@ -18,8 +18,7 @@ from .models import AttachmentPolicy, MigrationOptions, MigrationRecord, Migrati
 from .parser import Note
 
 
-def _eprint(*args, **kwargs):
-    print(*args, file=sys.stderr, flush=True, **kwargs)
+_log = logging.getLogger(__name__)
 
 
 def _has_doc_siblings(attachments: list, policy: AttachmentPolicy) -> bool:
@@ -161,7 +160,7 @@ def migrate_note(
                     " This may be the 750 GB daily upload limit —"
                     " resume tomorrow with the same command (completed notes will be skipped)."
                 )
-        _eprint(f"Error: {rtl_display(note.title)!r}: {error_msg} ({type(exc).__name__})")
+        _log.error("%s: %s (%s)", rtl_display(note.title), error_msg, type(exc).__name__)
         return MigrationRecord(
             notebook=note.notebook, title=note.title, kind=kind_label,
             status=MigrationStatus.ERROR, output=[], error=error_msg,
