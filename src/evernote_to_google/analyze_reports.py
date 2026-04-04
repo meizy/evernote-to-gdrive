@@ -7,7 +7,6 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Iterable
 
-from rich.console import Console
 from rich.table import Table
 
 from .analyze import AnalysisResult
@@ -15,7 +14,7 @@ from .classifier import classify, _safe_name
 from .display import rtl_display
 from .parser import Note
 
-console = Console()
+from ._console import console
 
 
 # ── print_report section functions ────────────────────────────────────────────

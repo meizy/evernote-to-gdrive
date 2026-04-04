@@ -7,14 +7,13 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Iterable
 
-from rich.console import Console
 from rich.table import Table
 
 from .display import rtl_display
 from .interlinks import count_interlinks
 from .parser import Note
 
-console = Console()
+from ._console import console
 
 
 def report_links_notebooks(notes: Iterable[Note]) -> None:

@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 
 import click
-from rich.console import Console
+import datetime
 
 from .analyze import run_analysis
 from .analyze_reports import (
@@ -20,7 +20,7 @@ from .report_links import report_links_notebooks, report_links_notes
 from .migrate import AttachmentPolicy, MigrationOptions, OutputMode, run_migration
 from .parser import load_notes
 
-console = Console()
+from ._console import console
 
 
 @click.group()
@@ -183,17 +183,21 @@ def migrate(
     INPUT: path to a single .enex file, or a folder containing .enex files
            and subfolders (the folder structure mirrors Evernote stacks/notebooks).
     """
-    if debug:
-        handler = logging.StreamHandler()
-        fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
-        fmt.formatTime = lambda record, datefmt=None: (  # type: ignore[method-assign]
-            __import__("datetime").datetime.fromtimestamp(record.created).strftime("%H:%M:%S.") +
-            f"{int(record.msecs):03d}"
-        )
-        handler.setFormatter(fmt)
-        pkg_log = logging.getLogger("evernote_to_google")
-        pkg_log.setLevel(logging.DEBUG)
-        pkg_log.addHandler(handler)
+    class _ConsoleHandler(logging.Handler):
+        def emit(self, record):
+            console.print(self.format(record), markup=False, highlight=False)
+
+    handler = _ConsoleHandler()
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    fmt.formatTime = lambda record, datefmt=None: (  # type: ignore[method-assign]
+        datetime.datetime.fromtimestamp(record.created).strftime("%H:%M:%S.") +
+        f"{int(record.msecs):03d}"
+    )
+    handler.setFormatter(fmt)
+    pkg_log = logging.getLogger("evernote_to_google")
+    pkg_log.setLevel(logging.DEBUG if debug else logging.INFO)
+    pkg_log.propagate = False
+    pkg_log.addHandler(handler)
 
     if note and not notebooks:
         raise click.UsageError("--note requires --notebook to be specified.")

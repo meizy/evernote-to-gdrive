@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import logging
 import re
-import sys
 from typing import Callable
 
 from .display import rtl_display
@@ -57,12 +56,6 @@ def _strip_external_images(html: str, title: str) -> str:
         note_label = f" {rtl_display(title)!r}" if title else ""
         _log.warning("note%s: %d external image(s) skipped (not embeddable)",
                      note_label, len(external_imgs))
-        print(
-            f"WARNING:{note_label}: {len(external_imgs)} external image(s) skipped"
-            " (not embeddable)",
-            file=sys.stderr,
-            flush=True,
-        )
     html = _RE_EXT_IMG_SC.sub("", html)
     html = _RE_EXT_IMG_OPEN.sub("", html)
     return html

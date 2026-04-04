@@ -11,7 +11,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from rich.console import Console
+from ._console import console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
 from rich.table import Column
 
@@ -22,8 +22,6 @@ from .interlinks import DeferredNote
 from .models import AttachmentPolicy, MigrationOptions, MigrationRecord, MigrationStatus, OutputMode
 from .classifier import sanitize_name
 from .parser import NotebookInfo, count_notes, parse_enex, scan_enex_structure
-
-console = Console()
 
 # Re-export for callers that currently import these from migrate
 __all__ = [

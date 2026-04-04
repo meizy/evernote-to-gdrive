@@ -143,35 +143,39 @@ def test_unchecked_todo_open_tag():
 
 # ── sanitize_enml — external image stripping ─────────────────────────────────
 
-def test_strips_external_img_self_closing(capsys):
+def test_strips_external_img_self_closing(caplog):
+    import logging
     enml = '<en-note><img src="https://example.com/pic.jpg"/></en-note>'
-    result = sanitize_enml(enml, _noop)
+    with caplog.at_level(logging.WARNING, logger="evernote_to_google._enml"):
+        result = sanitize_enml(enml, _noop)
     assert "<img" not in result
-    captured = capsys.readouterr()
-    assert "WARNING" in captured.err
-    assert "1 external image(s)" in captured.err
+    assert "WARNING" in caplog.text
+    assert "1 external image(s)" in caplog.text
 
 
-def test_strips_external_img_open_tag(capsys):
+def test_strips_external_img_open_tag(caplog):
+    import logging
     enml = '<en-note><img src="https://example.com/pic.jpg"></en-note>'
-    result = sanitize_enml(enml, _noop)
+    with caplog.at_level(logging.WARNING, logger="evernote_to_google._enml"):
+        result = sanitize_enml(enml, _noop)
     assert "<img" not in result
-    captured = capsys.readouterr()
-    assert "1 external image(s)" in captured.err
+    assert "1 external image(s)" in caplog.text
 
 
-def test_warning_includes_title(capsys):
+def test_warning_includes_title(caplog):
+    import logging
     enml = '<en-note><img src="https://example.com/x.jpg"/></en-note>'
-    sanitize_enml(enml, _noop, title="My Note")
-    captured = capsys.readouterr()
-    assert "'My Note'" in captured.err
+    with caplog.at_level(logging.WARNING, logger="evernote_to_google._enml"):
+        sanitize_enml(enml, _noop, title="My Note")
+    assert "'My Note'" in caplog.text
 
 
-def test_no_warning_without_external_imgs(capsys):
+def test_no_warning_without_external_imgs(caplog):
+    import logging
     enml = '<en-note>plain text</en-note>'
-    sanitize_enml(enml, _noop)
-    captured = capsys.readouterr()
-    assert captured.err == ""
+    with caplog.at_level(logging.WARNING, logger="evernote_to_google._enml"):
+        sanitize_enml(enml, _noop)
+    assert not caplog.records
 
 
 # ── sanitize_enml — full round trip ──────────────────────────────────────────
