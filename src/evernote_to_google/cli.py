@@ -4,16 +4,21 @@ CLI entry point for evernote-to-gdrive.
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 
 import click
 from rich.console import Console
 
-from .analyze import find_note, list_notes_by_mime, print_report, report_duplicates, report_tags as report_tags_fn, run_analysis
+from .analyze import run_analysis
+from .analyze_reports import (
+    find_note, list_notes_by_mime, print_warnings, report_summary,
+    report_attachments, report_classification, report_counts,
+    report_duplicates, report_empty, report_tags, report_top_size,
+)
 from .report_links import report_links_notebooks, report_links_notes
 from .migrate import AttachmentPolicy, MigrationOptions, OutputMode, run_migration
+from .parser import load_notes
 
 console = Console()
 
@@ -25,74 +30,96 @@ def main():
 
 # ── analyze ───────────────────────────────────────────────────────────────────
 
+_RESULT_REPORTS: dict = {
+    'class':        report_classification,
+    'attachments':  report_attachments,
+    'counts':       report_counts,
+    'top_size':     report_top_size,
+}
+_NOTES_REPORTS: dict = {
+    'dups':             report_duplicates,
+    'empty':            report_empty,
+    'tags':             report_tags,
+    'links_notebooks':  report_links_notebooks,
+    'links_notes':      report_links_notes,
+}
+_ALL_ORDER = list(_RESULT_REPORTS) + list(_NOTES_REPORTS)
+
+
+def _record_report(key: str):
+    def cb(ctx, _param, value):
+        if value and not ctx.resilient_parsing:
+            ctx.meta.setdefault('report_order', []).append(key)
+        return value
+    return cb
+
+
 @main.command()
+@click.pass_context
 @click.argument("input", type=click.Path(exists=True, path_type=Path))
-@click.option("--output-json", type=click.Path(path_type=Path), default=None,
-              help="Also write statistics to a JSON file.")
-@click.option("--mime", default=None, metavar="MIME_TYPE",
-              help="List notes that have an attachment of this MIME type (e.g. application/msword).")
+@click.option("--all", "all_reports_flag", is_flag=True, default=False,
+              help="Show all report sections.")
+@click.option("--report-attachments", is_flag=True, default=False, expose_value=False,
+              callback=_record_report('attachments'),
+              help="Show attachment MIME types and totals.")
+@click.option("--report-class", is_flag=True, default=False, expose_value=False,
+              callback=_record_report('class'),
+              help="Show note classification breakdown (text-only, attachment-only, mixed).")
+@click.option("--report-counts", is_flag=True, default=False, expose_value=False,
+              callback=_record_report('counts'),
+              help="Show note counts per notebook.")
+@click.option("--report-dups", is_flag=True, default=False, expose_value=False,
+              callback=_record_report('dups'),
+              help="List all notes with duplicate titles within the same notebook.")
+@click.option("--report-empty", is_flag=True, default=False, expose_value=False,
+              callback=_record_report('empty'),
+              help="List all empty notes (no text and no attachments).")
+@click.option("--report-links-notebooks", is_flag=True, default=False, expose_value=False,
+              callback=_record_report('links_notebooks'),
+              help="Report total inter-note link counts per notebook, sorted by count.")
+@click.option("--report-links-notes", is_flag=True, default=False, expose_value=False,
+              callback=_record_report('links_notes'),
+              help="Report inter-note link counts per note, sorted by notebook then note name.")
+@click.option("--report-tags", is_flag=True, default=False, expose_value=False,
+              callback=_record_report('tags'),
+              help="List all tags with a count of notes per tag, sorted by count.")
+@click.option("--report-top-size", is_flag=True, default=False, expose_value=False,
+              callback=_record_report('top_size'),
+              help="Show top notebooks by attachment size.")
 @click.option("--findnote", default=None, metavar="TITLE",
               help="Report which notebook(s) contain a note with this title.")
-@click.option("--report-dups", is_flag=True, default=False,
-              help="List all notes with duplicate titles within the same notebook.")
-@click.option("--report-tags", "report_tags", is_flag=True, default=False,
-              help="List all tags with a count of notes per tag, sorted by count.")
-@click.option("--report-links-notebooks", "report_links_nbs", is_flag=True, default=False,
-              help="Report total inter-note link counts per notebook, sorted by count.")
-@click.option("--report-links-notes", "report_links_nts", is_flag=True, default=False,
-              help="Report inter-note link counts per note, sorted by notebook then note name.")
-def analyze(input: Path, output_json: Path | None, mime: str | None, findnote: str | None, report_dups: bool, report_tags: bool, report_links_nbs: bool, report_links_nts: bool):
-    """Inspect .enex files and report statistics (no upload)."""
+@click.option("--mime", default=None, metavar="MIME_TYPE",
+              help="List notes that have an attachment of this MIME type (e.g. application/msword).")
+def analyze(ctx, input: Path, mime: str | None, findnote: str | None, all_reports_flag: bool):
+    """Inspect .enex files and report statistics (no upload).
+
+    \b
+    INPUT: path to a single .enex file, or a folder containing .enex files
+           and subfolders (the folder structure mirrors Evernote stacks/notebooks).
+    """
     console.print(f"[dim]Reading: {input}")
     if mime:
-        list_notes_by_mime(input, mime)
+        list_notes_by_mime(load_notes(input), mime)
         return
     if findnote:
-        find_note(input, findnote)
+        find_note(load_notes(input), findnote)
         return
-    if report_dups:
-        report_duplicates(input)
-        return
-    if report_tags:
-        report_tags_fn(input)
-        return
-    if report_links_nbs:
-        report_links_notebooks(input)
-        return
-    if report_links_nts:
-        report_links_notes(input)
-        return
-    result = run_analysis(input)
-    print_report(result)
-    if output_json:
-        data = {
-            "total_notes": result.total_notes,
-            "by_notebook": dict(result.by_notebook),
-            "classification": {
-                "text_only": result.text_only,
-                "attachment_only_single": result.attachment_only_single,
-                "attachment_only_multi": result.attachment_only_multi,
-                "text_with_attachments": result.text_with_attachments,
-            },
-            "attachments": {
-                "count": result.attachments.count,
-                "total_bytes": result.attachments.total_bytes,
-                "total_mb": round(result.attachments.total_bytes / 1_048_576, 2),
-                "by_mime": dict(result.attachments.by_mime),
-                "largest_bytes": result.attachments.largest_bytes,
-                "largest_name": result.attachments.largest_name,
-            },
-            "notes_with_multi_attachments": result.notes_with_multi_attachments,
-            "top_notebooks_by_attachment_size": dict(
-                sorted(result.attachment_bytes_by_notebook.items(), key=lambda x: x[1], reverse=True)[:10]
-            ),
-            "warnings": {
-                "empty_notes": result.empty_notes,
-                "encrypted_notes": result.encrypted_notes,
-            },
-        }
-        output_json.write_text(json.dumps(data, indent=2, ensure_ascii=False))
-        console.print(f"[dim]Stats written to {output_json}")
+
+    order = _ALL_ORDER if all_reports_flag else ctx.meta.get('report_order', [])
+    needs_result = not order or any(k in _RESULT_REPORTS for k in order)
+
+    notes = list(load_notes(input))
+    result = run_analysis(notes) if needs_result else None
+
+    if needs_result:
+        report_summary(result)
+    for key in order:
+        if key in _RESULT_REPORTS:
+            _RESULT_REPORTS[key](result)
+        else:
+            _NOTES_REPORTS[key](notes)
+    if needs_result:
+        print_warnings(result)
 
 
 # ── migrate ───────────────────────────────────────────────────────────────────
@@ -146,7 +173,12 @@ def migrate(
     debug: bool,
     skip_note_links: bool,
 ):
-    """Migrate Evernote notes to Google Drive (gdrive) or a local folder (local)."""
+    """Migrate Evernote notes to Google Drive (gdrive) or a local folder (local).
+
+    \b
+    INPUT: path to a single .enex file, or a folder containing .enex files
+           and subfolders (the folder structure mirrors Evernote stacks/notebooks).
+    """
     if debug:
         handler = logging.StreamHandler()
         fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")

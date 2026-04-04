@@ -5,23 +5,23 @@ Report inter-note link counts from .enex files.
 from __future__ import annotations
 
 from collections import defaultdict
-from pathlib import Path
+from typing import Iterable
 
 from rich.console import Console
 from rich.table import Table
 
 from .display import rtl_display
 from .interlinks import count_interlinks
-from .parser import load_notes
+from .parser import Note
 
 console = Console()
 
 
-def report_links_notebooks(input_path: Path) -> None:
+def report_links_notebooks(notes: Iterable[Note]) -> None:
     """Report total inter-note link counts per notebook, sorted by count descending."""
     notebook_counts: dict[str, int] = defaultdict(int)
 
-    for note in load_notes(input_path):
+    for note in notes:
         n = count_interlinks(note.enml)
         if n:
             notebook_counts[note.notebook] += n
@@ -41,11 +41,11 @@ def report_links_notebooks(input_path: Path) -> None:
     console.print(f"\n[dim]{total} link(s) across {len(notebook_counts)} notebook(s).")
 
 
-def report_links_notes(input_path: Path) -> None:
+def report_links_notes(notes: Iterable[Note]) -> None:
     """Report inter-note link counts per note, sorted by notebook then note name."""
-    note_rows: list[tuple[str, str, int]] = []  # (notebook, title, count)
+    note_rows: list[tuple[str, str, int]] = []
 
-    for note in load_notes(input_path):
+    for note in notes:
         n = count_interlinks(note.enml)
         if n:
             note_rows.append((note.notebook, note.title, n))
