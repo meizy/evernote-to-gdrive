@@ -17,10 +17,15 @@
       "Bash(pytest:*)",
       "Bash(.venv/bin/pytest:*)",
       "Bash(python -m evernote_to_google.cli analyze:*)",
-      "Bash(python -c ':*)"
+      "Bash(python -c ':*)",
+      "Bash(python -c \"from src.evernote_to_google.cli import main; print\\('OK'\\)\")",
+      "Bash(python -m src.evernote_to_google.cli analyze --help)",
+      "Bash(python -c \"from src.evernote_to_google.cli import main; from click.testing import CliRunner; r = CliRunner\\(\\); print\\(r.invoke\\(main, ['analyze', '--help']\\).output\\)\")",
+      "Bash(python -c \"from src.evernote_to_google.cli import main; from click.testing import CliRunner; print\\(CliRunner\\(\\).invoke\\(main, ['analyze', '--help']\\).output\\)\")"
     ],
     "additionalDirectories": [
-      "/Users/moshe/.claude"
+      "/Users/moshe/.claude",
+      "/Users/moshe/.claude/plans"
     ]
   }
 }
