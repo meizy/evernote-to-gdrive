@@ -273,7 +273,7 @@ Existing notes are never re-uploaded. If a run is interrupted, rerunning resumes
 - Evernote `evernote:///view/...` links in notes are rewritten to Google Doc URLs after migration
 - Matching is title-based (ENEX files do not include note GUIDs; anchor text = target note title)
 - Two-pass approach: pass 1 migrates all notes; pass 2 rewrites links and updates docs in place
-- Unresolved links (target note not in export) are replaced with `[link to "Title" not resolved]` text
+- Unresolved links (target note not in export, or note was renamed after the link was created) are replaced with `[link to "Title" not resolved]` text; stale anchors from renamed notes cannot be resolved
 - Use `--skip-note-links` to opt out of link rewriting
 - Local output mode: not supported (no stable URLs)
 - Single-note mode (`--note`): all links are replaced with the "not resolved" text

@@ -20,6 +20,7 @@ from .display import rtl_display
 from .drive import get_bytes_uploaded, log_throttle_summary, reset_throttle_sleep_total
 from .interlinks import DeferredNote
 from .models import AttachmentPolicy, MigrationOptions, MigrationRecord, MigrationStatus, OutputMode
+from .classifier import sanitize_name
 from .parser import NotebookInfo, count_notes, parse_enex, scan_enex_structure
 
 console = Console()
@@ -58,15 +59,19 @@ def _apply_filters(structure: list[NotebookInfo], options: MigrationOptions) -> 
         filtered = [s for s in filtered if s.stack in stack_set]
 
     if options.notebooks:
-        nb_set = set(options.notebooks)
+        # Notebook names on disk may have special chars (e.g. ":") replaced with "_"
+        # by the OS. Sanitize user input the same way before matching.
+        sanitized_to_original = {sanitize_name(n): n for n in options.notebooks}
+        sanitized_nb_set = set(sanitized_to_original)
         available_nb = {s.notebook for s in structure}
-        missing_nb = nb_set - available_nb
+        missing_nb = sanitized_nb_set - available_nb
         if missing_nb:
-            _eprint(f"Error: notebook(s) not found: {', '.join(rtl_display(n) for n in sorted(missing_nb))}")
+            original_missing = {sanitized_to_original[n] for n in missing_nb}
+            _eprint(f"Error: notebook(s) not found: {', '.join(rtl_display(n) for n in sorted(original_missing))}")
             if available_nb:
                 _eprint(f"  Available notebooks: {', '.join(rtl_display(n) for n in sorted(available_nb))}")
             return None
-        filtered = [s for s in filtered if s.notebook in nb_set]
+        filtered = [s for s in filtered if s.notebook in sanitized_nb_set]
 
     return filtered
 
@@ -137,16 +142,38 @@ def _run_progress(filtered: list[NotebookInfo], total: int, options: MigrationOp
                 progress.advance(task)
 
 
-def _rewrite_interlinks(writer, deferred: list[DeferredNote], title_to_doc_id: dict[str, str]) -> None:
+def _rewrite_interlinks(writer, deferred: list[DeferredNote], title_to_doc_id: dict[str, str],
+                        verbose: bool = False) -> None:
     total_resolved = total_unresolved = 0
-    console.print(f"\n[dim]Rewriting inter-note links for {len(deferred)} note(s)...")
-    for d in deferred:
-        try:
-            resolved, unresolved = writer.rewrite_interlinks(d, title_to_doc_id)
-            total_resolved += resolved
-            total_unresolved += unresolved
-        except Exception as exc:
-            _eprint(f"Error rewriting links for {rtl_display(d.title)!r}: {exc}")
+    console.print()
+    console.rule("pass 2")
+    if verbose:
+        for d in deferred:
+            try:
+                resolved, unresolved = writer.rewrite_interlinks(d, title_to_doc_id)
+                total_resolved += resolved
+                total_unresolved += unresolved
+                console.print(f"{rtl_display(d.title)} ({resolved + unresolved} links)")
+            except Exception as exc:
+                _eprint(f"Error rewriting links for {rtl_display(d.title)!r}: {exc}")
+    else:
+        with Progress(
+            TextColumn("[progress.description]{task.description}", table_column=Column(width=55, no_wrap=True)),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Rewriting inter-note links", total=len(deferred))
+            for d in deferred:
+                progress.update(task, description=f"{d.title[:55]}")
+                try:
+                    resolved, unresolved = writer.rewrite_interlinks(d, title_to_doc_id)
+                    total_resolved += resolved
+                    total_unresolved += unresolved
+                except Exception as exc:
+                    _eprint(f"Error rewriting links for {rtl_display(d.title)!r}: {exc}")
+                progress.advance(task)
     console.print(f"  [dim]Links rewritten: {total_resolved} resolved, {total_unresolved} unresolved")
 
 
@@ -193,7 +220,7 @@ def run_migration(input_path: Path, options: MigrationOptions) -> list[Migration
             shutil.rmtree(null_tmp, ignore_errors=True)
 
     if deferred_notes and title_to_doc_id is not None:
-        _rewrite_interlinks(writer, deferred_notes, title_to_doc_id)
+        _rewrite_interlinks(writer, deferred_notes, title_to_doc_id, verbose=options.verbose)
 
     if options.note and not records:
         _eprint(f"Error: note {rtl_display(options.note)!r} not found in the selected notebook(s).")

@@ -171,12 +171,16 @@ def attachment_sibling_filename(note_title: str, label: str, type_index: int, at
     return f"{safe_title}_{label}_{type_index}{ext}"
 
 
-def _safe_name(name: str, max_length: int = 200) -> str:
-    """Strip characters that are problematic in Drive filenames."""
-    # Drive allows most characters, but avoid / \ : * ? " < > |
+def sanitize_name(name: str) -> str:
+    """Replace characters that are invalid in filenames with underscores."""
     for ch in r'/\:*?"<>|':
         name = name.replace(ch, "_")
-    return name.strip()[:max_length]
+    return name
+
+
+def _safe_name(name: str, max_length: int = 200) -> str:
+    """Strip characters that are problematic in Drive filenames."""
+    return sanitize_name(name).strip()[:max_length]
 
 
 # Unicode ranges that indicate RTL scripts (Hebrew, Arabic, etc.)

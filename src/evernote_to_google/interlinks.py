@@ -11,6 +11,7 @@ Two-pass approach:
 
 from __future__ import annotations
 
+import html
 import logging
 import re
 from dataclasses import dataclass, field
@@ -43,8 +44,8 @@ def count_interlinks(enml: str) -> int:
 
 
 def _anchor_title(inner_html: str) -> str:
-    """Extract plain text title from anchor inner HTML (strip any nested tags)."""
-    return _RE_STRIP_TAGS.sub("", inner_html).strip()
+    """Extract plain text title from anchor inner HTML (strip tags, decode entities)."""
+    return html.unescape(_RE_STRIP_TAGS.sub("", inner_html).strip())
 
 
 def rewrite_evernote_links(
