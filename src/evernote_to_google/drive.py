@@ -258,7 +258,7 @@ def doc_url(file_id: str) -> str:
 def batch_set_permissions(drive, file_ids: list[str]) -> None:
     """
     Set 'anyone reader' permission on all file_ids in a single batch request.
-    Individual failures are logged as warnings but do not raise.
+    Retries transient failures up to _MAX_RETRIES times with exponential backoff.
     Note: Drive batch requests support up to 100 sub-requests.
     """
     if len(file_ids) > 100:
@@ -267,31 +267,53 @@ def batch_set_permissions(drive, file_ids: list[str]) -> None:
             len(file_ids), len(file_ids) - 100,
         )
         file_ids = file_ids[:100]
-    errors: dict[str, str] = {}
 
-    def _cb(request_id: str, response, exception) -> None:
-        if exception:
-            errors[request_id] = str(exception)
+    pending = list(file_ids)
+    delay = 1.0
+    for attempt in range(_MAX_RETRIES):
+        errors: dict[str, HttpError] = {}
 
-    batch = drive.new_batch_http_request(callback=_cb)
-    for fid in file_ids:
-        batch.add(
-            drive.permissions().create(
-                fileId=fid,
-                body={"role": "reader", "type": "anyone"},
-            ),
-            request_id=fid,
+        def _cb(request_id: str, response, exception) -> None:
+            if isinstance(exception, HttpError):
+                errors[request_id] = exception
+
+        batch = drive.new_batch_http_request(callback=_cb)
+        for fid in pending:
+            batch.add(
+                drive.permissions().create(
+                    fileId=fid,
+                    body={"role": "reader", "type": "anyone"},
+                ),
+                request_id=fid,
+            )
+        time.sleep(len(pending) * _WRITE_INTERVAL)
+        batch.execute()
+
+        retryable = {fid: exc for fid, exc in errors.items() if exc.status_code in _RETRY_STATUS}
+        permanent = {fid: exc for fid, exc in errors.items() if exc.status_code not in _RETRY_STATUS}
+
+        for fid, exc in permanent.items():
+            _log.warning("batch permission failed for %s: %s", fid, exc)
+
+        if not retryable:
+            return
+
+        _log.debug(
+            "batch permission: %d transient errors (attempt %d/%d) — retrying in %.0fs",
+            len(retryable), attempt + 1, _MAX_RETRIES, delay,
         )
-    time.sleep(len(file_ids) * _WRITE_INTERVAL)
-    batch.execute()
-    for fid, err in errors.items():
-        _log.warning("batch permission failed for %s: %s", fid, err)
+        time.sleep(delay)
+        delay *= 2
+        pending = list(retryable.keys())
+
+    for fid in pending:
+        _log.warning("batch permission failed for %s after %d attempts", fid, _MAX_RETRIES)
 
 
 def batch_delete_files(drive, file_ids: list[str]) -> None:
     """
     Delete all file_ids in a single batch request (best-effort cleanup).
-    Individual failures are logged as warnings but do not raise.
+    Retries transient failures up to _MAX_RETRIES times with exponential backoff.
     Note: Drive batch requests support up to 100 sub-requests.
     """
     if len(file_ids) > 100:
@@ -300,19 +322,41 @@ def batch_delete_files(drive, file_ids: list[str]) -> None:
             len(file_ids), len(file_ids) - 100,
         )
         file_ids = file_ids[:100]
-    errors: dict[str, str] = {}
 
-    def _cb(request_id: str, response, exception) -> None:
-        if exception:
-            errors[request_id] = str(exception)
+    pending = list(file_ids)
+    delay = 1.0
+    for attempt in range(_MAX_RETRIES):
+        errors: dict[str, HttpError] = {}
 
-    batch = drive.new_batch_http_request(callback=_cb)
-    for fid in file_ids:
-        batch.add(drive.files().delete(fileId=fid), request_id=fid)
-    time.sleep(len(file_ids) * _WRITE_INTERVAL)
-    batch.execute()
-    for fid, err in errors.items():
-        _log.warning("batch delete failed for %s: %s", fid, err)
+        def _cb(request_id: str, response, exception) -> None:
+            if isinstance(exception, HttpError):
+                errors[request_id] = exception
+
+        batch = drive.new_batch_http_request(callback=_cb)
+        for fid in pending:
+            batch.add(drive.files().delete(fileId=fid), request_id=fid)
+        time.sleep(len(pending) * _WRITE_INTERVAL)
+        batch.execute()
+
+        retryable = {fid: exc for fid, exc in errors.items() if exc.status_code in _RETRY_STATUS}
+        permanent = {fid: exc for fid, exc in errors.items() if exc.status_code not in _RETRY_STATUS}
+
+        for fid, exc in permanent.items():
+            _log.warning("batch delete failed for %s: %s", fid, exc)
+
+        if not retryable:
+            return
+
+        _log.debug(
+            "batch delete: %d transient errors (attempt %d/%d) — retrying in %.0fs",
+            len(retryable), attempt + 1, _MAX_RETRIES, delay,
+        )
+        time.sleep(delay)
+        delay *= 2
+        pending = list(retryable.keys())
+
+    for fid in pending:
+        _log.warning("batch delete failed for %s after %d attempts", fid, _MAX_RETRIES)
 
 
 # ── internal ──────────────────────────────────────────────────────────────────

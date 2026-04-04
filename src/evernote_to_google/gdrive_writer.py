@@ -54,14 +54,13 @@ if TYPE_CHECKING:
 def _delete_image_files(drive, image_file_ids: list[str]) -> None:
     if not image_file_ids:
         return
-    if len(image_file_ids) > 2:
+    if len(image_file_ids) == 1:
+        fid = image_file_ids[0]
+        _log.debug("deleting temp image file %s", fid)
+        _write_retry(drive.files().delete(fileId=fid).execute, op=f"delete temp image '{fid}'")
+    else:
         _log.debug("batch-deleting %d temp image files", len(image_file_ids))
         batch_delete_files(drive, image_file_ids)
-    else:
-        for fid in image_file_ids:
-            _log.debug("going to delete temp image file %s (files.delete)", fid)
-            _write_retry(drive.files().delete(fileId=fid).execute, op=f"delete temp image '{fid}'")
-            _log.debug("temp image file %s deleted", fid)
 
 
 def _enml_to_html(
@@ -174,20 +173,19 @@ class GDriveWriter:
             _log.warning("note %r: skipped %d image(s) exceeding the 100-image limit", rtl_display(title), skipped_images)
 
         # Phase 1b: set public permissions on images
-        if len(image_file_ids) > 2:
+        if len(image_file_ids) == 1:
+            fid = image_file_ids[0]
+            _log.debug("making image file %s public", fid)
+            _write_retry(
+                self._drive.permissions().create(
+                    fileId=fid,
+                    body={"role": "reader", "type": "anyone"},
+                ).execute,
+                op=f"set permission on '{fid}'",
+            )
+        elif image_file_ids:
             _log.debug("batch-setting permissions on %d images", len(image_file_ids))
             batch_set_permissions(self._drive, image_file_ids)
-        else:
-            for fid in image_file_ids:
-                _log.debug("going to make image file %s public (permissions.create)", fid)
-                _write_retry(
-                    self._drive.permissions().create(
-                        fileId=fid,
-                        body={"role": "reader", "type": "anyone"},
-                    ).execute,
-                    op=f"set permission on '{fid}'",
-                )
-                _log.debug("image file %s made public", fid)
 
         # Phase 2: build HTML and import as Google Doc
         html = _enml_to_html(note.enml, hash_to_img_url, hash_to_link, note.source_url, title=note.title)
