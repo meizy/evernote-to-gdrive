@@ -35,6 +35,13 @@ def has_interlinks(enml: str) -> bool:
     return "evernote:///" in enml
 
 
+def count_interlinks(enml: str) -> int:
+    """Return the number of evernote:/// inter-note links in ENML."""
+    if "evernote:///" not in enml:
+        return 0
+    return len(_RE_INTERLINK.findall(enml))
+
+
 def _anchor_title(inner_html: str) -> str:
     """Extract plain text title from anchor inner HTML (strip any nested tags)."""
     return _RE_STRIP_TAGS.sub("", inner_html).strip()

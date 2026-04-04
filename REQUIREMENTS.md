@@ -203,6 +203,8 @@ evernote-to-gdrive analyze INPUT [OPTIONS]
   --findnote TITLE      Find which notebook(s) contain a note with a given title
   --report-dups         List all notes with duplicate titles within the same notebook
   --report-tags         List all tags with a count of notes per tag, sorted by count descending
+  --report-links-notebooks  Total inter-note link count per notebook, sorted by count descending
+  --report-links-notes      Inter-note link count per note, sorted by notebook then note name
 
 evernote-to-gdrive migrate INPUT [OPTIONS]
   --output [gdrive|local]    Output mode [default: gdrive]

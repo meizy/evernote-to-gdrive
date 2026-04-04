@@ -4,9 +4,8 @@ Analyze .enex files and report statistics without uploading anything.
 
 from __future__ import annotations
 
-import json
 from collections import defaultdict
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from rich.console import Console
@@ -14,7 +13,7 @@ from rich.table import Table
 
 from .classifier import NoteKind, classify, _safe_name
 from .display import rtl_display
-from .parser import Note, load_notes
+from .parser import load_notes
 
 console = Console()
 
@@ -295,32 +294,3 @@ def report_tags(input_path: Path) -> None:
     console.print(f"\n[dim]{len(tag_counts)} unique tag(s).")
 
 
-def save_json(result: AnalysisResult, path: Path) -> None:
-    # Convert defaultdicts to plain dicts for JSON serialization
-    data = {
-        "total_notes": result.total_notes,
-        "by_notebook": dict(result.by_notebook),
-        "classification": {
-            "text_only": result.text_only,
-            "attachment_only_single": result.attachment_only_single,
-            "attachment_only_multi": result.attachment_only_multi,
-            "text_with_attachments": result.text_with_attachments,
-        },
-        "attachments": {
-            "count": result.attachments.count,
-            "total_bytes": result.attachments.total_bytes,
-            "total_mb": round(result.attachments.total_bytes / 1_048_576, 2),
-            "by_mime": dict(result.attachments.by_mime),
-            "largest_bytes": result.attachments.largest_bytes,
-            "largest_name": result.attachments.largest_name,
-        },
-        "notes_with_multi_attachments": result.notes_with_multi_attachments,
-        "top_notebooks_by_attachment_size": dict(
-            sorted(result.attachment_bytes_by_notebook.items(), key=lambda x: x[1], reverse=True)[:10]
-        ),
-        "warnings": {
-            "empty_notes": result.empty_notes,
-            "encrypted_notes": result.encrypted_notes,
-        },
-    }
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
