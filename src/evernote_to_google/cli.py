@@ -46,7 +46,7 @@ _NOTES_REPORTS: dict = {
 _ALL_ORDER = list(_RESULT_REPORTS) + list(_NOTES_REPORTS)
 
 
-def _record(key: str):
+def _record_flags(key: str):
     def cb(ctx, _param, value):
         if value and not ctx.resilient_parsing:
             ctx.meta.setdefault('order', []).append((key, value))
@@ -67,37 +67,37 @@ _ALL_ORDER_PAIRS = [(k, True) for k in _ALL_ORDER]
 @click.option("--all", "all_reports_flag", is_flag=True, default=False,
               help="Show all report sections.")
 @click.option("--report-attachments", is_flag=True, default=False, expose_value=False,
-              callback=_record('attachments'),
+              callback=_record_flags('attachments'),
               help="Show attachment MIME types and totals.")
 @click.option("--report-class", is_flag=True, default=False, expose_value=False,
-              callback=_record('class'),
+              callback=_record_flags('class'),
               help="Show note classification breakdown (text-only, attachment-only, mixed).")
 @click.option("--report-counts", is_flag=True, default=False, expose_value=False,
-              callback=_record('counts'),
+              callback=_record_flags('counts'),
               help="Show note counts per notebook.")
 @click.option("--report-dups", is_flag=True, default=False, expose_value=False,
-              callback=_record('dups'),
+              callback=_record_flags('dups'),
               help="List all notes with duplicate titles within the same notebook.")
 @click.option("--report-empty", is_flag=True, default=False, expose_value=False,
-              callback=_record('empty'),
+              callback=_record_flags('empty'),
               help="List all empty notes (no text and no attachments).")
 @click.option("--report-links-notebooks", is_flag=True, default=False, expose_value=False,
-              callback=_record('links_notebooks'),
+              callback=_record_flags('links_notebooks'),
               help="Report total inter-note link counts per notebook, sorted by count.")
 @click.option("--report-links-notes", is_flag=True, default=False, expose_value=False,
-              callback=_record('links_notes'),
+              callback=_record_flags('links_notes'),
               help="Report inter-note link counts per note, sorted by notebook then note name.")
 @click.option("--report-tags", is_flag=True, default=False, expose_value=False,
-              callback=_record('tags'),
+              callback=_record_flags('tags'),
               help="List all tags with a count of notes per tag, sorted by count.")
 @click.option("--report-top-size", is_flag=True, default=False, expose_value=False,
-              callback=_record('top_size'),
+              callback=_record_flags('top_size'),
               help="Show top notebooks by attachment size.")
 @click.option("--findnote", default=None, metavar="TITLE", expose_value=False,
-              callback=_record('findnote'),
+              callback=_record_flags('findnote'),
               help="Report which notebook(s) contain a note with this title.")
 @click.option("--mime", default=None, metavar="MIME_TYPE", expose_value=False,
-              callback=_record('mime'),
+              callback=_record_flags('mime'),
               help="List notes that have an attachment of this MIME type (e.g. application/msword).")
 def analyze(ctx, input: Path, all_reports_flag: bool):
     """Inspect .enex files and report statistics (no upload).

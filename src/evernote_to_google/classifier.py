@@ -43,12 +43,15 @@ def classify(note: Note) -> ClassifiedNote:
     plain_text = enml_to_text(note.enml)
     has_text = has_meaningful_text(plain_text)
 
-    # Strip application/octet-stream attachments — these are raw HTML sources
-    # or other internal blobs saved by the Evernote web clipper and have no
-    # meaningful content for migration.
+    # Strip attachments with unsupported or noise mime types:
+    # - application/octet-stream: raw HTML sources or internal blobs from the
+    #   Evernote web clipper with no meaningful content for migration.
+    # - image/svg+xml: SVGs are not supported in Google Docs or DOCX and are
+    #   typically decorative web-clip chrome (site logos, icons).
+    _SKIP_MIME = {"application/octet-stream", "image/svg+xml"}
     attachments = [
         att for att in note.attachments
-        if att.mime != "application/octet-stream"
+        if att.mime not in _SKIP_MIME
     ]
 
     n_attachments = len(attachments)

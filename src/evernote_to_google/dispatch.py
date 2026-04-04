@@ -33,9 +33,10 @@ def _has_doc_siblings(attachments: list, policy: AttachmentPolicy) -> bool:
 def _write_note(note: Note, classified, safe_title: str, eff_title: str, policy: AttachmentPolicy, options: MigrationOptions, writer, defer_cleanup: bool = False) -> list[str]:
     kind = classified.kind
     attachments = classified.attachments
+    extra = {"defer_image_cleanup": True} if defer_cleanup else {}
 
     if kind == NoteKind.TEXT_ONLY:
-        return [writer.write_doc(safe_title, [], note, defer_image_cleanup=defer_cleanup)]
+        return [writer.write_doc(safe_title, [], note, **extra)]
 
     if kind == NoteKind.ATTACHMENT_ONLY_SINGLE:
         att = attachments[0]
@@ -53,7 +54,7 @@ def _write_note(note: Note, classified, safe_title: str, eff_title: str, policy:
             return output
         has_siblings = _has_doc_siblings(attachments, policy)
         doc_title = f"{safe_title}_0" if has_siblings else safe_title
-        return [writer.write_doc(doc_title, attachments, note, policy, defer_image_cleanup=defer_cleanup)]
+        return [writer.write_doc(doc_title, attachments, note, policy, **extra)]
 
     if kind == NoteKind.TEXT_WITH_ATTACHMENTS:
         # FILES implies BOTH for text notes: the doc must exist for the text,
@@ -61,7 +62,7 @@ def _write_note(note: Note, classified, safe_title: str, eff_title: str, policy:
         effective = AttachmentPolicy.BOTH if policy == AttachmentPolicy.FILES else policy
         has_siblings = _has_doc_siblings(attachments, effective)
         doc_title = f"{safe_title}_0" if has_siblings else safe_title
-        return [writer.write_doc(doc_title, attachments, note, effective, defer_image_cleanup=defer_cleanup)]
+        return [writer.write_doc(doc_title, attachments, note, effective, **extra)]
 
     raise ValueError(f"Unhandled note kind: {kind}")
 

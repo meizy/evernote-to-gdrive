@@ -36,7 +36,9 @@ Each note falls into one of these categories:
 
 "Meaningful text" means non-empty after stripping Evernote's HTML markup and whitespace.
 
-`application/octet-stream` attachments (raw HTML blobs saved by the Evernote web clipper) are excluded from classification and output.
+The following attachment types are excluded from classification and output entirely:
+- `application/octet-stream` — raw HTML blobs saved by the Evernote web clipper
+- `image/svg+xml` — SVG images, typically decorative web-clip chrome (logos, icons); not supported in Google Docs or DOCX
 
 ### Attachment policy (`--attachments`)
 
@@ -73,7 +75,7 @@ When a doc has sibling files, the doc itself is named `<title>_0` (e.g. `My Note
 
 ### Image embedding in Google Docs
 
-Image files are embedded inline in the Google Doc. Supported formats: JPEG, PNG, GIF, and WebP. SVG is not embedded (no inline SVG support in Google Docs) and is handled as a sibling file instead. A maximum of 100 images are embedded per note; any beyond that are skipped with a warning.
+Image files are embedded inline in the Google Doc. Supported formats: JPEG, PNG, GIF, and WebP. SVG is excluded entirely (not supported in Google Docs or DOCX and typically noise from web clips). A maximum of 100 images are embedded per note; any beyond that are skipped with a warning.
 
 Non-image attachments (such as PDF, audio, video, Office documents) are uploaded as sibling Drive files and linked from the doc with a clearly labelled hyperlink.
 
