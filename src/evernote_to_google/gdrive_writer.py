@@ -31,7 +31,8 @@ from .classifier import (
     attachment_label,
     attachment_sibling_filename,
 )
-from .docs import create_doc
+from .docs import create_doc, update_doc
+from .interlinks import DeferredNote, rewrite_evernote_links
 from .drive import (
     _retry,
     _write_retry,
@@ -48,6 +49,19 @@ from .parser import Attachment, Note
 
 if TYPE_CHECKING:
     from .migrate import AttachmentPolicy
+
+
+def _delete_image_files(drive, image_file_ids: list[str]) -> None:
+    if not image_file_ids:
+        return
+    if len(image_file_ids) > 2:
+        _log.debug("batch-deleting %d temp image files", len(image_file_ids))
+        batch_delete_files(drive, image_file_ids)
+    else:
+        for fid in image_file_ids:
+            _log.debug("going to delete temp image file %s (files.delete)", fid)
+            _write_retry(drive.files().delete(fileId=fid).execute)
+            _log.debug("temp image file %s deleted", fid)
 
 
 def _enml_to_html(
@@ -116,7 +130,7 @@ class GDriveWriter:
         notebook_id = self._notebook_id(note)
         return safe_title in self._file_cache.get(notebook_id, set())
 
-    def write_doc(self, title: str, attachments: list[Attachment], note: Note, policy: "AttachmentPolicy | None" = None) -> str:
+    def write_doc(self, title: str, attachments: list[Attachment], note: Note, policy: "AttachmentPolicy | None" = None, defer_image_cleanup: bool = False) -> str:
         policy = policy or self._policy
         _log.debug("going to write note %r as gdoc (%d attachments)", rtl_display(title), len(attachments))
         parent_id = self._notebook_id(note)
@@ -186,17 +200,38 @@ class GDriveWriter:
         )
 
         # Phase 3: delete temp image files if policy is 'doc'
-        if policy == "doc" and image_file_ids:
-            if len(image_file_ids) > 2:
-                _log.debug("batch-deleting %d temp image files", len(image_file_ids))
-                batch_delete_files(self._drive, image_file_ids)
-            else:
-                for fid in image_file_ids:
-                    _log.debug("going to delete temp image file %s (files.delete)", fid)
-                    _write_retry(self._drive.files().delete(fileId=fid).execute)
-                    _log.debug("temp image file %s deleted", fid)
+        if defer_image_cleanup:
+            self._deferred_img_url = hash_to_img_url
+            self._deferred_link = hash_to_link
+            self._deferred_image_ids = image_file_ids
+        elif policy == "doc":
+            _delete_image_files(self._drive, image_file_ids)
 
         return doc_id
+
+    def pop_deferred_state(self) -> tuple[dict, dict, list] | None:
+        """Return and clear the image state saved by write_doc(defer_image_cleanup=True)."""
+        if not hasattr(self, "_deferred_img_url"):
+            return None
+        state = (self._deferred_img_url, self._deferred_link, self._deferred_image_ids)
+        del self._deferred_img_url, self._deferred_link, self._deferred_image_ids
+        return state
+
+    def rewrite_interlinks(self, deferred: DeferredNote, title_to_doc_id: dict[str, str]) -> tuple[int, int]:
+        """Rewrite inter-note links in a previously-migrated doc and update it in place."""
+        rewritten_enml, resolved, unresolved = rewrite_evernote_links(
+            deferred.enml, title_to_doc_id, note_title=deferred.title,
+        )
+        html = _enml_to_html(
+            rewritten_enml,
+            deferred.hash_to_img_url,
+            deferred.hash_to_link,
+            deferred.source_url,
+            title=deferred.title,
+        )
+        update_doc(self._drive, deferred.doc_id, html, deferred.modified_time)
+        _delete_image_files(self._drive, deferred.image_file_ids)
+        return resolved, unresolved
 
     def write_raw_file(self, name: str, data: bytes, mime_type: str, note: Note) -> str:
         _log.debug("going to write note %r as raw file [%s]", rtl_display(name), mime_type)

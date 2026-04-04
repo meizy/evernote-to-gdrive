@@ -264,9 +264,18 @@ Existing notes are never re-uploaded. If a run is interrupted, rerunning resumes
 - **API rate limits**: exponential backoff with retry (max 5 attempts) — see Google API Usage above
 - **Partial failures**: continue migration; report failed notes at the end without halting the run
 
+## Inter-Note Link Rewriting (GDrive mode)
+
+- Evernote `evernote:///view/...` links in notes are rewritten to Google Doc URLs after migration
+- Matching is title-based (ENEX files do not include note GUIDs; anchor text = target note title)
+- Two-pass approach: pass 1 migrates all notes; pass 2 rewrites links and updates docs in place
+- Unresolved links (target note not in export) are replaced with `[link to "Title" not resolved]` text
+- Use `--skip-note-links` to opt out of link rewriting
+- Local output mode: not supported (no stable URLs)
+- Single-note mode (`--note`): all links are replaced with the "not resolved" text
+
 ## Out of Scope (v1)
 
-- Evernote note links between notes
 - Evernote internal resources (ink notes, encrypted text sections)
 - Shared notebooks or collaboration features
 - Incremental sync / two-way sync

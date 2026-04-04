@@ -91,6 +91,8 @@ def analyze(input: Path, output_json: Path | None, mime: str | None, findnote: s
               help="Print a line for each note instead of a progress bar.")
 @click.option("--debug", is_flag=True, default=False,
               help="Enable debug logging of Google API calls.")
+@click.option("--skip-note-links", is_flag=True, default=False,
+              help="Skip rewriting evernote:/// inter-note links (GDrive mode only).")
 def migrate(
     input: Path,
     output_mode: str,
@@ -104,6 +106,7 @@ def migrate(
     no_tags: bool,
     verbose: bool,
     debug: bool,
+    skip_note_links: bool,
 ):
     """Migrate Evernote notes to Google Drive (gdrive) or a local folder (local)."""
     if debug:
@@ -133,6 +136,7 @@ def migrate(
         log_file=log_file,
         include_tags=not no_tags,
         verbose=verbose or debug,
+        skip_note_links=skip_note_links,
     )
 
     if mode == OutputMode.GOOGLE:

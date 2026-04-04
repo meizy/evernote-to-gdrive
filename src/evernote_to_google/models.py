@@ -48,3 +48,4 @@ class MigrationOptions:
     log_file: Path | None
     include_tags: bool = True
     verbose: bool = False
+    skip_note_links: bool = False

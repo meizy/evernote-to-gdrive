@@ -66,3 +66,33 @@ def create_doc(
         _log.debug("modifiedTime restored for doc %s", doc_id)
 
     return doc_id
+
+
+def update_doc(drive, doc_id: str, html: bytes, modified_time=None) -> None:
+    """
+    Replace a Google Doc's content by re-importing HTML.
+    Patches modifiedTime back after import (Drive resets it).
+    """
+    from googleapiclient.http import MediaInMemoryUpload
+    _log.debug("going to update gdoc %s content (files.update)", doc_id)
+    media = MediaInMemoryUpload(html, mimetype="text/html", resumable=False)
+    _write_retry(
+        drive.files().update(
+            fileId=doc_id,
+            media_body=media,
+            fields="id",
+        ).execute
+    )
+    add_bytes_uploaded(len(html))
+    _log.debug("gdoc %s content updated", doc_id)
+
+    if modified_time:
+        _log.debug("going to restore modifiedTime for doc %s (files.update)", doc_id)
+        _write_retry(
+            drive.files().update(
+                fileId=doc_id,
+                body={"modifiedTime": modified_time.strftime("%Y-%m-%dT%H:%M:%S.000Z")},
+                fields="id",
+            ).execute
+        )
+        _log.debug("modifiedTime restored for doc %s", doc_id)

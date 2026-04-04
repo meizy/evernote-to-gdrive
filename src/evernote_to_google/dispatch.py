@@ -6,12 +6,14 @@ from __future__ import annotations
 
 import sys
 from collections import defaultdict
+from dataclasses import replace as dc_replace
 
 from googleapiclient.errors import HttpError
 
 from .classifier import NoteKind, attachment_label, attachment_sibling_filename, classify, _safe_name, _EMBEDDABLE_IMAGE_MIME
 from .display import rtl_display
 from .drive import get_bytes_uploaded
+from .interlinks import DeferredNote, has_interlinks, rewrite_evernote_links
 from .models import AttachmentPolicy, MigrationOptions, MigrationRecord, MigrationStatus, OutputMode
 from .parser import Note
 
@@ -28,12 +30,12 @@ def _has_doc_siblings(attachments: list, policy: AttachmentPolicy) -> bool:
     return any(a.mime not in _EMBEDDABLE_IMAGE_MIME for a in attachments)
 
 
-def _write_note(note: Note, classified, safe_title: str, eff_title: str, policy: AttachmentPolicy, options: MigrationOptions, writer) -> list[str]:
+def _write_note(note: Note, classified, safe_title: str, eff_title: str, policy: AttachmentPolicy, options: MigrationOptions, writer, defer_cleanup: bool = False) -> list[str]:
     kind = classified.kind
     attachments = classified.attachments
 
     if kind == NoteKind.TEXT_ONLY:
-        return [writer.write_doc(safe_title, [], note)]
+        return [writer.write_doc(safe_title, [], note, defer_image_cleanup=defer_cleanup)]
 
     if kind == NoteKind.ATTACHMENT_ONLY_SINGLE:
         att = attachments[0]
@@ -51,7 +53,7 @@ def _write_note(note: Note, classified, safe_title: str, eff_title: str, policy:
             return output
         has_siblings = _has_doc_siblings(attachments, policy)
         doc_title = f"{safe_title}_0" if has_siblings else safe_title
-        return [writer.write_doc(doc_title, attachments, note, policy)]
+        return [writer.write_doc(doc_title, attachments, note, policy, defer_image_cleanup=defer_cleanup)]
 
     if kind == NoteKind.TEXT_WITH_ATTACHMENTS:
         # FILES implies BOTH for text notes: the doc must exist for the text,
@@ -59,12 +61,18 @@ def _write_note(note: Note, classified, safe_title: str, eff_title: str, policy:
         effective = AttachmentPolicy.BOTH if policy == AttachmentPolicy.FILES else policy
         has_siblings = _has_doc_siblings(attachments, effective)
         doc_title = f"{safe_title}_0" if has_siblings else safe_title
-        return [writer.write_doc(doc_title, attachments, note, effective)]
+        return [writer.write_doc(doc_title, attachments, note, effective, defer_image_cleanup=defer_cleanup)]
 
     raise ValueError(f"Unhandled note kind: {kind}")
 
 
-def migrate_note(note: Note, options: MigrationOptions, writer, seen: dict[tuple[str, str], int]) -> MigrationRecord:
+def migrate_note(
+    note: Note,
+    options: MigrationOptions,
+    writer,
+    seen: dict[tuple[str, str], int],
+    deferred_notes: list[DeferredNote] | None = None,
+) -> MigrationRecord:
     classified = classify(note)
     kind_label = classified.kind.name.lower()
     safe_title = _safe_name(note.title)
@@ -107,7 +115,35 @@ def migrate_note(note: Note, options: MigrationOptions, writer, seen: dict[tuple
                     status=MigrationStatus.SKIPPED, output=[],
                 )
 
-        output = _write_note(note, classified, safe_title, eff_title, policy, options, writer)
+        gdrive = options.output_mode == OutputMode.GOOGLE
+        note_enml = note.enml or ""
+        interlinked = gdrive and has_interlinks(note_enml) and not options.skip_note_links
+
+        # In --note mode there is no pass 2: rewrite links to "not resolved" inline.
+        if interlinked and options.note:
+            note_enml, _, _ = rewrite_evernote_links(note_enml, {}, note_title=note.title)
+            note = dc_replace(note, enml=note_enml)
+            interlinked = False
+
+        output = _write_note(note, classified, safe_title, eff_title, policy, options, writer,
+                             defer_cleanup=interlinked)
+
+        if interlinked and deferred_notes is not None and output:
+            state = writer.pop_deferred_state()
+            if state:
+                img_url, link, image_ids = state
+                deferred_notes.append(DeferredNote(
+                    title=note.title,
+                    doc_id=output[0],
+                    enml=note_enml,
+                    hash_to_img_url=img_url,
+                    hash_to_link=link,
+                    source_url=note.source_url,
+                    modified_time=note.updated or note.created,
+                    image_file_ids=image_ids,
+                    include_tags=options.include_tags,
+                    tags=list(note.tags),
+                ))
 
         return MigrationRecord(
             notebook=note.notebook, title=note.title, kind=kind_label,
