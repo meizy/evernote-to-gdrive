@@ -267,6 +267,7 @@ Existing notes are never re-uploaded. If a run is interrupted, rerunning resumes
 - **Unsupported attachment types**: upload as-is with original MIME type; log a warning
 - **API rate limits**: exponential backoff with retry (max 5 attempts) — see Google API Usage above
 - **Partial failures**: continue migration; report failed notes at the end without halting the run
+- **API error context**: all Google Drive API failures (including network-level errors like `TimeoutError`, `ConnectionError`) must include the specific operation that failed (e.g. `[upload 'note_pdf_1.pdf']`, `[create doc 'My Note']`) and where applicable the file or resource name, so failures can be diagnosed without re-running with debug logging
 
 ## Inter-Note Link Rewriting (GDrive mode)
 

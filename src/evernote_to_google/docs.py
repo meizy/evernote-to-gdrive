@@ -46,7 +46,7 @@ def create_doc(
 
     _log.debug("going to create gdoc %r (files.create)", rtl_display(title))
     media = MediaInMemoryUpload(html, mimetype="text/html", resumable=False)
-    file = _write_retry(drive.files().create(body=metadata, media_body=media, fields="id").execute)
+    file = _write_retry(drive.files().create(body=metadata, media_body=media, fields="id").execute, op=f"create doc '{title}'")
     doc_id = file["id"]
     add_bytes_uploaded(len(html))
     _log.debug("gdoc %r created successfully (id: %s)", rtl_display(title), doc_id)
@@ -61,7 +61,8 @@ def create_doc(
                 body={"modifiedTime": modified_time.strftime("%Y-%m-%dT%H:%M:%S.000Z")},
                 fields="id",
             )
-            .execute
+            .execute,
+            op=f"set modifiedTime for doc '{title}'",
         )
         _log.debug("modifiedTime restored for doc %s", doc_id)
 
@@ -81,7 +82,8 @@ def update_doc(drive, doc_id: str, html: bytes, modified_time=None) -> None:
             fileId=doc_id,
             media_body=media,
             fields="id",
-        ).execute
+        ).execute,
+        op=f"update doc '{doc_id}'",
     )
     add_bytes_uploaded(len(html))
     _log.debug("gdoc %s content updated", doc_id)
@@ -93,6 +95,7 @@ def update_doc(drive, doc_id: str, html: bytes, modified_time=None) -> None:
                 fileId=doc_id,
                 body={"modifiedTime": modified_time.strftime("%Y-%m-%dT%H:%M:%S.000Z")},
                 fields="id",
-            ).execute
+            ).execute,
+            op=f"set modifiedTime for doc '{doc_id}'",
         )
         _log.debug("modifiedTime restored for doc %s", doc_id)

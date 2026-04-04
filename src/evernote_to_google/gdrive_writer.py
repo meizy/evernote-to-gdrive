@@ -60,7 +60,7 @@ def _delete_image_files(drive, image_file_ids: list[str]) -> None:
     else:
         for fid in image_file_ids:
             _log.debug("going to delete temp image file %s (files.delete)", fid)
-            _write_retry(drive.files().delete(fileId=fid).execute)
+            _write_retry(drive.files().delete(fileId=fid).execute, op=f"delete temp image '{fid}'")
             _log.debug("temp image file %s deleted", fid)
 
 
@@ -184,7 +184,8 @@ class GDriveWriter:
                     self._drive.permissions().create(
                         fileId=fid,
                         body={"role": "reader", "type": "anyone"},
-                    ).execute
+                    ).execute,
+                    op=f"set permission on '{fid}'",
                 )
                 _log.debug("image file %s made public", fid)
 

@@ -69,7 +69,7 @@ def _write_throttle() -> None:
     _last_write = time.monotonic()
 
 
-def _retry(fn, *args, **kwargs):
+def _retry(fn, *args, op: str = "", **kwargs):
     """Call fn(*args, **kwargs) with exponential backoff on transient errors."""
     delay = 1.0
     for attempt in range(_MAX_RETRIES):
@@ -84,11 +84,15 @@ def _retry(fn, *args, **kwargs):
             )
             time.sleep(delay)
             delay *= 2
+        except Exception as exc:
+            if op:
+                raise type(exc)(f"[{op}] {exc}") from exc
+            raise
     # unreachable
     raise RuntimeError("retry loop exited unexpectedly")
 
 
-def _write_retry(fn, *args, **kwargs):
+def _write_retry(fn, *args, op: str = "", **kwargs):
     """Like _retry, but throttles to 3 writes/sec before each attempt."""
     delay = 1.0
     for attempt in range(_MAX_RETRIES):
@@ -104,6 +108,10 @@ def _write_retry(fn, *args, **kwargs):
             )
             time.sleep(delay)
             delay *= 2
+        except Exception as exc:
+            if op:
+                raise type(exc)(f"[{op}] {exc}") from exc
+            raise
     # unreachable
     raise RuntimeError("retry loop exited unexpectedly")
 
@@ -118,7 +126,8 @@ def get_or_create_folder(drive, name: str, parent_id: str | None = None) -> str:
 
     _log.debug("going to query folder %r in parent %s (files.list)", rtl_display(name), parent_id or "root")
     resp = _retry(
-        drive.files().list(q=q, fields="files(id, name)", spaces="drive").execute
+        drive.files().list(q=q, fields="files(id, name)", spaces="drive").execute,
+        op=f"list folder '{name}'",
     )
     files = resp.get("files", [])
     if files:
@@ -134,7 +143,8 @@ def get_or_create_folder(drive, name: str, parent_id: str | None = None) -> str:
         metadata["parents"] = [parent_id]
 
     folder = _write_retry(
-        drive.files().create(body=metadata, fields="id").execute
+        drive.files().create(body=metadata, fields="id").execute,
+        op=f"create folder '{name}'",
     )
     _log.debug("folder %r created (id: %s)", rtl_display(name), folder["id"])
     return folder["id"]
@@ -192,27 +202,12 @@ def upload_file(
     file = _write_retry(
         drive.files()
         .create(body=metadata, media_body=media, fields="id")
-        .execute
+        .execute,
+        op=f"upload '{name}'",
     )
     add_bytes_uploaded(len(data))
     _log.debug("file %r uploaded (id: %s)", rtl_display(name), file["id"])
     return file["id"]
-
-
-def file_exists(drive, name: str, parent_id: str) -> str | None:
-    """Return file ID if a file named `name` already exists in `parent_id`, else None."""
-    q = (
-        f"name = {_quote(name)} and '{parent_id}' in parents"
-        " and trashed = false"
-    )
-    _log.debug("going to check if file %r exists in folder %s (files.list)", rtl_display(name), parent_id)
-    resp = _retry(
-        drive.files().list(q=q, fields="files(id)", spaces="drive").execute
-    )
-    files = resp.get("files", [])
-    result = files[0]["id"] if files else None
-    _log.debug("file %r %s", rtl_display(name), f"found (id: {result})" if result else "not found")
-    return result
 
 
 def list_folder_files(drive, parent_id: str) -> set[str]:
@@ -225,7 +220,7 @@ def list_folder_files(drive, parent_id: str) -> set[str]:
         kwargs: dict = dict(q=q, fields="nextPageToken, files(name)", spaces="drive", pageSize=1000)
         if page_token:
             kwargs["pageToken"] = page_token
-        resp = _retry(drive.files().list(**kwargs).execute)
+        resp = _retry(drive.files().list(**kwargs).execute, op=f"list folder '{parent_id}'")
         for f in resp.get("files", []):
             names.add(f["name"])
         page_token = resp.get("nextPageToken")
