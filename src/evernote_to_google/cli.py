@@ -46,12 +46,19 @@ _NOTES_REPORTS: dict = {
 _ALL_ORDER = list(_RESULT_REPORTS) + list(_NOTES_REPORTS)
 
 
-def _record_report(key: str):
+def _record(key: str):
     def cb(ctx, _param, value):
         if value and not ctx.resilient_parsing:
-            ctx.meta.setdefault('report_order', []).append(key)
+            ctx.meta.setdefault('order', []).append((key, value))
         return value
     return cb
+
+
+_STRING_REPORTS = {
+    'mime':     list_notes_by_mime,
+    'findnote': find_note,
+}
+_ALL_ORDER_PAIRS = [(k, True) for k in _ALL_ORDER]
 
 
 @main.command()
@@ -60,37 +67,39 @@ def _record_report(key: str):
 @click.option("--all", "all_reports_flag", is_flag=True, default=False,
               help="Show all report sections.")
 @click.option("--report-attachments", is_flag=True, default=False, expose_value=False,
-              callback=_record_report('attachments'),
+              callback=_record('attachments'),
               help="Show attachment MIME types and totals.")
 @click.option("--report-class", is_flag=True, default=False, expose_value=False,
-              callback=_record_report('class'),
+              callback=_record('class'),
               help="Show note classification breakdown (text-only, attachment-only, mixed).")
 @click.option("--report-counts", is_flag=True, default=False, expose_value=False,
-              callback=_record_report('counts'),
+              callback=_record('counts'),
               help="Show note counts per notebook.")
 @click.option("--report-dups", is_flag=True, default=False, expose_value=False,
-              callback=_record_report('dups'),
+              callback=_record('dups'),
               help="List all notes with duplicate titles within the same notebook.")
 @click.option("--report-empty", is_flag=True, default=False, expose_value=False,
-              callback=_record_report('empty'),
+              callback=_record('empty'),
               help="List all empty notes (no text and no attachments).")
 @click.option("--report-links-notebooks", is_flag=True, default=False, expose_value=False,
-              callback=_record_report('links_notebooks'),
+              callback=_record('links_notebooks'),
               help="Report total inter-note link counts per notebook, sorted by count.")
 @click.option("--report-links-notes", is_flag=True, default=False, expose_value=False,
-              callback=_record_report('links_notes'),
+              callback=_record('links_notes'),
               help="Report inter-note link counts per note, sorted by notebook then note name.")
 @click.option("--report-tags", is_flag=True, default=False, expose_value=False,
-              callback=_record_report('tags'),
+              callback=_record('tags'),
               help="List all tags with a count of notes per tag, sorted by count.")
 @click.option("--report-top-size", is_flag=True, default=False, expose_value=False,
-              callback=_record_report('top_size'),
+              callback=_record('top_size'),
               help="Show top notebooks by attachment size.")
-@click.option("--findnote", default=None, metavar="TITLE",
+@click.option("--findnote", default=None, metavar="TITLE", expose_value=False,
+              callback=_record('findnote'),
               help="Report which notebook(s) contain a note with this title.")
-@click.option("--mime", default=None, metavar="MIME_TYPE",
+@click.option("--mime", default=None, metavar="MIME_TYPE", expose_value=False,
+              callback=_record('mime'),
               help="List notes that have an attachment of this MIME type (e.g. application/msword).")
-def analyze(ctx, input: Path, mime: str | None, findnote: str | None, all_reports_flag: bool):
+def analyze(ctx, input: Path, all_reports_flag: bool):
     """Inspect .enex files and report statistics (no upload).
 
     \b
@@ -98,26 +107,21 @@ def analyze(ctx, input: Path, mime: str | None, findnote: str | None, all_report
            and subfolders (the folder structure mirrors Evernote stacks/notebooks).
     """
     console.print(f"[dim]Reading: {input}")
-    if mime:
-        list_notes_by_mime(load_notes(input), mime)
-        return
-    if findnote:
-        find_note(load_notes(input), findnote)
-        return
-
-    order = _ALL_ORDER if all_reports_flag else ctx.meta.get('report_order', [])
-    needs_result = not order or any(k in _RESULT_REPORTS for k in order)
-
     notes = list(load_notes(input))
+
+    order = _ALL_ORDER_PAIRS if all_reports_flag else ctx.meta.get('order', [])
+    needs_result = not order or any(k in _RESULT_REPORTS for k, _ in order)
     result = run_analysis(notes) if needs_result else None
 
     if needs_result:
         report_summary(result)
-    for key in order:
+    for key, value in order:
         if key in _RESULT_REPORTS:
             _RESULT_REPORTS[key](result)
-        else:
+        elif key in _NOTES_REPORTS:
             _NOTES_REPORTS[key](notes)
+        else:
+            _STRING_REPORTS[key](notes, value)
     if needs_result:
         print_warnings(result)
 
