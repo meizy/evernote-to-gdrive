@@ -129,7 +129,7 @@ def _run_progress(filtered: list[NotebookInfo], total: int, options: MigrationOp
             for note in parse_enex(info.path, stack=info.stack):
                 if options.note and note.title != options.note:
                     continue
-                progress.update(task, description=f"[cyan]{note.notebook}[/] / {note.title[:40]}")
+                progress.update(task, description=f"[cyan]{rtl_display(note.notebook)}[/] / {rtl_display(note.title[:40])}")
                 record = migrate_note(note=note, options=options, writer=writer, seen=seen,
                                       deferred_notes=deferred_notes)
                 records.append(record)
@@ -161,7 +161,7 @@ def _rewrite_interlinks(writer, deferred: list[DeferredNote], title_to_doc_id: d
         ) as progress:
             task = progress.add_task("Rewriting inter-note links", total=len(deferred))
             for d in deferred:
-                progress.update(task, description=f"{d.title[:55]}")
+                progress.update(task, description=f"{rtl_display(d.title[:55])}")
                 try:
                     resolved, unresolved = writer.rewrite_interlinks(d, title_to_doc_id, duplicate_titles)
                     total_resolved += resolved
