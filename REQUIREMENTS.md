@@ -2,13 +2,13 @@
 
 ## Overview
 
-A Python CLI tool (`evernote-to-gdrive`) that migrates Evernote notes to Google Drive, preserving content structure and organization. Designed for **one-time migration** from Evernote — not for ongoing synchronization between the two platforms.
+A Python CLI tool (`evernote-to-gdrive`) that migrates Evernote notes to Google Drive or to local file system, preserving content structure and organization. Designed for **one-time migration** from Evernote — not for ongoing synchronization between the two platforms.
 
 ## Input
 
-The tool expects a **directory of `.enex` files**, one per notebook. Evernote's desktop app can export each notebook individually to produce this layout.
+The tool expects a **directory of `.enex` files**, one per notebook. Evernote's desktop app can export each notebook individually, or you can use tools like evernote-backup to produce this layout (https://github.com/vzhd1701/evernote-backup).
 
-To preserve **stack hierarchy**, nest notebook exports inside subdirectories named after the stack:
+To preserve **stack hierarchy**, the export folder should have  notebook nested inside subdirectories named after the stack:
 
 ```
 export/
@@ -49,27 +49,15 @@ Web-clipped notes (those with a source URL) always use `doc` policy regardless o
 | Flag value | Behavior |
 |---|---|
 | `doc` *(default)* | Embed images inline in the doc; upload non-image attachments (PDF, audio, video, Office docs, etc.) as sibling files and link them. |
-| `files` | One raw sibling file per attachment, named `<title>_<label>_<n>.<ext>`. For text+attachment notes, the doc is also created and all attachments are kept as siblings (same as `both`). |
-| `both` | Embed images inline in the doc AND keep all attachments as sibling files. |
+| `files` | One raw sibling file per attachment, named `<title>_<n>.<ext>`. For text+attachment notes, the doc is also created and all attachments are kept as siblings. |
 
 ### Attachment sibling filename pattern
 
 Sibling files (attachments written alongside a doc) are named:
 
 ```
-<note_title>_<label>_<n>.<ext>
+<note_title>_<n>.<ext>
 ```
-
-Where `<label>` is derived from the MIME type and `<n>` is a per-label running counter:
-
-| MIME primary type | Label | Example |
-|---|---|---|
-| `image/*` | `img` | `My Note_img_1.jpg` |
-| `audio/*` | `aud` | `My Note_aud_1.mp3` |
-| `video/*` | `vid` | `My Note_vid_1.mp4` |
-| `text/*` | `txt` | `My Note_txt_1.txt` |
-| `application/pdf` | `pdf` | `My Note_pdf_1.pdf` |
-| `application/*` (other) | first 3 chars of subtype | `My Note_zip_1.zip`, `My Note_doc_1.docx` |
 
 When a doc has sibling files, the doc itself is named `<title>_0` (e.g. `My Note_0.docx`) so all related files sort together.
 
@@ -170,23 +158,30 @@ Uses OAuth 2.0. Credentials stored locally in `.config/` under the project direc
 
 ## Output Modes
 
-### `google` (default)
+### `gdrive` (default)
 
 Uploads directly to Google Drive. Creates Google Docs for text notes; embeds images inline; uploads non-image attachments (PDF, audio, video, etc.) as separate Drive files and inserts clickable links into the Doc.
 
 ### `local`
 
-Writes notes to a local folder tree on disk (mirroring the stack/notebook hierarchy). Intended as a staging area: the folder can then be uploaded to Google Drive manually, with Drive's "Convert uploads" setting to auto-convert `.docx` files to Google Docs.
+Writes notes to a local folder tree on disk (mirroring the stack/notebook hierarchy). can be used as a staging area: the folder can then be uploaded to Google Drive manually, with Drive's "Convert uploads" setting to auto-convert `.docx` files to Google Docs.
 
-| Note type | Local output |
+The following table lists the different output options, depending on note contents and the run flags (--attachments). whenever a doc is generated, it will be a docx in local mode or gdoc in gdrive mode.
+
+## output files 
+
+**sibling files** are files for non-embeddable attachenmts (pdf, audio, video, etc.). when they exist they will be named with a running sequence - `<title>_1.pdf`, `<title>_2.m4a`, etc. - and if a doc file also exists it will be named `<title>_0.docx` in local mode or `<title>_0` google doc.
+
+
+
+| Note type | output |
 |---|---|
-| Attachment-only, single | Raw file (`<title>.<ext>`) |
-| Attachment-only, multi (`--attachments=doc`) | `<title>_0.docx` (if any siblings) with images embedded inline; non-image attachments written as sibling files (`<title>_pdf_1.pdf`, `<title>_aud_1.m4a`, etc.) and linked in the doc |
-| Attachment-only, multi (`--attachments=files`) | One raw sibling file per attachment (`<title>_img_1.jpg`, `<title>_pdf_1.pdf`, etc.) |
-| Attachment-only, multi (`--attachments=both`) | `<title>_0.docx` with images embedded AND all attachments kept as sibling files |
-| Text-only | `<title>.docx` |
-| Text + attachments (`--attachments=doc`) | `<title>_0.docx` with images embedded inline; non-image attachments as sibling files linked in the doc |
-| Text + attachments (`--attachments=files` or `both`) | `<title>_0.docx` with images embedded inline; all attachments also kept as sibling files |
+| Text-only | a single doc |
+| Attachment-only, single - a note that contains only one image or pdf etc.| Raw file (`<title>.<ext>`) (e.g. `MyNote.pdf`)|
+| Text + images, or just images| doc file with the images embedded|
+| Text + attachments, some non-images | `<title>_0` doc with images embedded inline + non-image attachments as sibling files, linked in the doc |
+| Attachment-only, multi, non-images only (`--attachments=doc`) | `<title>_0` doc + attachments sibling files linked in the doc |
+| Attachment-only, multi, non-images only (`--attachments=files`) | only sibling files for attachments |
 
 RTL text (Hebrew, Arabic) is rendered correctly in all output formats.
 
