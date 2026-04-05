@@ -23,49 +23,40 @@ export/
 
 A single `.enex` file is also accepted, but all notes will be placed in one folder (the file's basename) with no stack/notebook structure.
 
-## Note Classification & Output Mapping
 
-Each note falls into one of these categories:
+## Output Files
 
-| Note type | Condition | Google Drive output |
-|---|---|---|
-| **Attachment-only, single** | No meaningful text, exactly 1 attachment | Upload the raw file — note title becomes the filename |
-| **Attachment-only, multiple** | No meaningful text, ≥2 attachments | See multi-attachment policy below |
-| **Text + attachment(s)** | Has text body AND ≥1 attachment | Google Doc with text; attachments embedded or linked (see below) |
-| **Text-only** | Has text body, no attachments | Google Doc |
+Some definitions:
 
-"Meaningful text" means non-empty after stripping Evernote's HTML markup and whitespace.
+- A *doc* is either a `.docx` file in local mode or a Google Docs in gdrive mode. 
+
+- *Sibling files* are separate files for non-embeddable attachments (pdf, audio, video, etc.). When they exist they are named with a running sequence: `<title>_1.pdf`, `<title>_2.m4a`, etc. If a doc file is also generated (see below) it is named `<title>_0.docx` in local mode or `<title>_0` as a Google Doc.
+
+- *Meaningful text* means non-empty after stripping Evernote's HTML markup and whitespace.
+
+- *Attachment-only* means a note without any "Meaningful text", only attachments (pdf, images, etc.)
+
+The following table lists the files that will be generated depending on the note contents and the --attachments flag:
+
+| Note type | Output |
+|---|---|
+| Text-only | a single doc |
+| Attachment-only, single - a note that contains only one image or pdf etc. | Raw file (`<title>.<ext>`) (e.g. `MyNote.pdf`) |
+| Text + images, or just images | doc file with the images embedded |
+| Text + attachments, some non-images | `<title>_0` doc with images embedded inline + non-image attachments as sibling files, linked in the doc |
+| Attachment-only, multi, non-images only (`--attachments=doc`) | `<title>_0` doc + attachments sibling files linked in the doc (the doc will only contain links) |
+| Attachment-only, multi, non-images only (`--attachments=files`) | only sibling files for attachments |
+
+### Image embedding
+
+Supported formats: JPEG, PNG, GIF, and WebP. SVG is excluded entirely (not supported in Google Docs or DOCX and typically noise from web clips). A maximum of 100 images are embedded per note; any beyond that are skipped with a warning. Non-image attachments are linked from the doc with a clearly labelled hyperlink.
+
+### Excluded attachments
 
 The following attachment types are excluded from classification and output entirely:
 - `application/octet-stream` — raw HTML blobs saved by the Evernote web clipper
 - `image/svg+xml` — SVG images, typically decorative web-clip chrome (logos, icons); not supported in Google Docs or DOCX
 
-### Attachment policy (`--attachments`)
-
-Controlled by a CLI flag, default: `doc`. Applies to all note types that produce a doc (text+attachments and attachment-only-multi). For text+attachment notes, `files` implies `both` since the doc must exist to hold the text.
-
-Web-clipped notes (those with a source URL) always use `doc` policy regardless of `--attachments`, to avoid producing sibling files from web clipper images.
-
-| Flag value | Behavior |
-|---|---|
-| `doc` *(default)* | Embed images inline in the doc; upload non-image attachments (PDF, audio, video, Office docs, etc.) as sibling files and link them. |
-| `files` | One raw sibling file per attachment, named `<title>_<n>.<ext>`. For text+attachment notes, the doc is also created and all attachments are kept as siblings. |
-
-### Attachment sibling filename pattern
-
-Sibling files (attachments written alongside a doc) are named:
-
-```
-<note_title>_<n>.<ext>
-```
-
-When a doc has sibling files, the doc itself is named `<title>_0` (e.g. `My Note_0.docx`) so all related files sort together.
-
-### Image embedding in Google Docs
-
-Image files are embedded inline in the Google Doc. Supported formats: JPEG, PNG, GIF, and WebP. SVG is excluded entirely (not supported in Google Docs or DOCX and typically noise from web clips). A maximum of 100 images are embedded per note; any beyond that are skipped with a warning.
-
-Non-image attachments (such as PDF, audio, video, Office documents) are uploaded as sibling Drive files and linked from the doc with a clearly labelled hyperlink.
 
 ## Notebook → Folder Mapping
 
@@ -131,6 +122,7 @@ The following additional transformations are applied to note content in all outp
 - **Encrypted blocks** (`<en-crypt>`) are stripped from the output.
 - **Checkboxes** (`<en-todo>`) are converted to `[x]` (checked) or `[ ]` (unchecked) text markers.
 - **External images** (HTTP/HTTPS `<img>` tags embedded in notes by the web clipper) are removed with a warning — they cannot be fetched or embedded.
+- **RTL text** (Hebrew, Arabic) is rendered correctly in all output formats.
 
 ## `analyze` Subcommand
 
@@ -160,30 +152,11 @@ Uses OAuth 2.0. Credentials stored locally in `.config/` under the project direc
 
 ### `gdrive` (default)
 
-Uploads directly to Google Drive. Creates Google Docs for text notes; embeds images inline; uploads non-image attachments (PDF, audio, video, etc.) as separate Drive files and inserts clickable links into the Doc.
+Uploads directly to Google Drive. See *Output Files* for the resulting file layout.
 
 ### `local`
 
-Writes notes to a local folder tree on disk (mirroring the stack/notebook hierarchy). can be used as a staging area: the folder can then be uploaded to Google Drive manually, with Drive's "Convert uploads" setting to auto-convert `.docx` files to Google Docs.
-
-The following table lists the different output options, depending on note contents and the run flags (--attachments). whenever a doc is generated, it will be a docx in local mode or gdoc in gdrive mode.
-
-## output files 
-
-**sibling files** are files for non-embeddable attachenmts (pdf, audio, video, etc.). when they exist they will be named with a running sequence - `<title>_1.pdf`, `<title>_2.m4a`, etc. - and if a doc file also exists it will be named `<title>_0.docx` in local mode or `<title>_0` google doc.
-
-
-
-| Note type | output |
-|---|---|
-| Text-only | a single doc |
-| Attachment-only, single - a note that contains only one image or pdf etc.| Raw file (`<title>.<ext>`) (e.g. `MyNote.pdf`)|
-| Text + images, or just images| doc file with the images embedded|
-| Text + attachments, some non-images | `<title>_0` doc with images embedded inline + non-image attachments as sibling files, linked in the doc |
-| Attachment-only, multi, non-images only (`--attachments=doc`) | `<title>_0` doc + attachments sibling files linked in the doc |
-| Attachment-only, multi, non-images only (`--attachments=files`) | only sibling files for attachments |
-
-RTL text (Hebrew, Arabic) is rendered correctly in all output formats.
+Writes notes to a local folder tree on disk (mirroring the stack/notebook hierarchy). Can be used as a staging area: the folder can then be uploaded to Google Drive manually, with Drive's "Convert uploads" setting to auto-convert `.docx` files to Google Docs.
 
 ## CLI Interface
 
@@ -211,7 +184,7 @@ evernote-to-gdrive migrate INPUT [OPTIONS]
   --stack TEXT               Only migrate notebooks in this stack (repeatable)
   --notebook TEXT            Only migrate this notebook (repeatable)
   --note TITLE               Only migrate the note with this exact title (requires --notebook)
-  --attachments [doc|files|both]  How to handle attachments [default: doc]
+  --attachments [doc|files]       How to handle attachments [default: doc]
   --log-file PATH            Write migration log (CSV)
   --verbose                  Print a line per note instead of a progress bar
 ```
