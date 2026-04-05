@@ -12,7 +12,12 @@
       "Bash(python -m pytest:*)",
       "Bash(pytest:*)",
       "Bash(.venv/bin/pytest:*)",
-      "Bash(python -c :*)"
+      "Bash(python -c :*)",
+      "Bash(python -c \"from evernote_to_google import cli, dispatch, classifier, local_writer, gdrive_writer\")",
+      "Bash(sort find:*)",
+      "Read(//tmp/**)",
+      "Read(//private/tmp/**)",
+      "Bash(xargs -I{} basename \"{}\" .enex)"
     ],
     "additionalDirectories": [
       "/Users/moshe/.claude",
