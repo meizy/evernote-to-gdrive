@@ -12,7 +12,6 @@ from pathlib import Path
 class AttachmentPolicy(str, Enum):
     DOC = "doc"
     FILES = "files"
-    BOTH = "both"
 
 
 class OutputMode(str, Enum):

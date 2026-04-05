@@ -5,12 +5,11 @@ Per-note classification and write dispatch.
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
 from dataclasses import replace as dc_replace
 
 from googleapiclient.errors import HttpError
 
-from .classifier import NoteKind, attachment_label, attachment_sibling_filename, classify, _safe_name, _EMBEDDABLE_IMAGE_MIME
+from .classifier import NoteKind, attachment_sibling_filename, classify, _safe_name, _EMBEDDABLE_IMAGE_MIME
 from .display import rtl_display
 from .drive import get_bytes_uploaded
 from .interlinks import DeferredNote, has_interlinks, rewrite_evernote_links
@@ -21,11 +20,9 @@ from .parser import Note
 _log = logging.getLogger(__name__)
 
 
-def _has_doc_siblings(attachments: list, policy: AttachmentPolicy) -> bool:
-    """Return True if the doc will have sibling files (determines whether _0 suffix is needed)."""
-    if policy in (AttachmentPolicy.BOTH, AttachmentPolicy.FILES):
-        return len(attachments) > 0
-    # DOC: only non-embeddable attachments become siblings
+def _has_doc_siblings(attachments: list) -> bool:
+    """Return True if the doc will have sibling files (determines whether _0 suffix is needed).
+    Images are always embedded, so only non-embeddable attachments become siblings."""
     return any(a.mime not in _EMBEDDABLE_IMAGE_MIME for a in attachments)
 
 
@@ -41,27 +38,25 @@ def _write_note(note: Note, classified, safe_title: str, eff_title: str, policy:
         att = attachments[0]
         return [writer.write_raw_file(safe_title, att.data, att.mime, note)]
 
+    has_images = any(a.mime in _EMBEDDABLE_IMAGE_MIME for a in attachments)
+
     if kind == NoteKind.ATTACHMENT_ONLY_MULTI:
-        if policy == AttachmentPolicy.FILES:
-            counters: dict[str, int] = defaultdict(int)
+        # FILES policy only applies when there are no images (all non-embeddable).
+        # If any images are present they must be embedded, so always use doc route.
+        if not has_images and policy == AttachmentPolicy.FILES:
             output = []
-            for att in attachments:
-                label = attachment_label(att.mime)
-                counters[label] += 1
-                filename = attachment_sibling_filename(eff_title, label, counters[label], att)
+            for idx, att in enumerate(attachments, 1):
+                filename = attachment_sibling_filename(eff_title, idx, att)
                 output.append(writer.write_raw_file(filename, att.data, att.mime, note))
             return output
-        has_siblings = _has_doc_siblings(attachments, policy)
+        has_siblings = _has_doc_siblings(attachments)
         doc_title = f"{safe_title}_0" if has_siblings else safe_title
-        return [writer.write_doc(doc_title, attachments, note, policy, **extra)]
+        return [writer.write_doc(doc_title, attachments, note, **extra)]
 
     if kind == NoteKind.TEXT_WITH_ATTACHMENTS:
-        # FILES implies BOTH for text notes: the doc must exist for the text,
-        # so all attachments are also written as siblings.
-        effective = AttachmentPolicy.BOTH if policy == AttachmentPolicy.FILES else policy
-        has_siblings = _has_doc_siblings(attachments, effective)
+        has_siblings = _has_doc_siblings(attachments)
         doc_title = f"{safe_title}_0" if has_siblings else safe_title
-        return [writer.write_doc(doc_title, attachments, note, effective, **extra)]
+        return [writer.write_doc(doc_title, attachments, note, **extra)]
 
     raise ValueError(f"Unhandled note kind: {kind}")
 
@@ -78,9 +73,7 @@ def migrate_note(
     safe_title = _safe_name(note.title)
     eff_title = note.title  # may get a ` (N)` suffix for local-mode duplicates
 
-    # Web-clipped notes have a source_url. Force doc policy to avoid
-    # producing many junk sibling files from page images.
-    policy = AttachmentPolicy.DOC if note.source_url else options.attachments
+    policy = options.attachments
 
     try:
         key = (note.notebook, safe_title)
@@ -97,13 +90,14 @@ def migrate_note(
             # gdrive: keep original name — Drive allows same-name files
         else:
             seen[key] = 1
-            # For attachment-only-multi with FILES policy, files are stored under
-            # sibling filenames, not safe_title — check the first one instead.
+            # For attachment-only-multi with FILES policy (all non-images), files are
+            # stored under sibling filenames, not safe_title — check the first one instead.
             if (classified.kind == NoteKind.ATTACHMENT_ONLY_MULTI
                     and policy == AttachmentPolicy.FILES
-                    and classified.attachments):
+                    and classified.attachments
+                    and not any(a.mime in _EMBEDDABLE_IMAGE_MIME for a in classified.attachments)):
                 att0 = classified.attachments[0]
-                check_name = attachment_sibling_filename(note.title, attachment_label(att0.mime), 1, att0)
+                check_name = attachment_sibling_filename(note.title, 1, att0)
             else:
                 check_name = safe_title
 

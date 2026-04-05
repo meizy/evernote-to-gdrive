@@ -1,11 +1,14 @@
 """
 Local output mode: write notes to a folder/subfolder tree on disk.
 
-  attachment-only, single  → raw file (<title>.<ext>)
-  attachment-only, multi   → one .docx listing all attachments (doc mode)
-                             OR one raw file per attachment (files mode)
   text-only                → <title>.docx
-  text + attachments       → <title>.docx  (images embedded, PDFs as sibling files)
+  attachment-only, single  → raw file (<title>.<ext>)
+  text + attachments /
+  attachment-only, multi   → <title>_0.docx (when non-image siblings exist)
+                             + <title>_1.<ext>, <title>_2.<ext>, … (non-image siblings)
+                             Images are always embedded inline; never written as sibling files.
+  attachment-only, multi,
+    no images, --attachments=files → only sibling files, no doc
 
 RTL (Hebrew/Arabic) paragraphs are detected and marked as bidi in the .docx XML
 so that Word, LibreOffice, and Google Docs all render them correctly.
@@ -20,23 +23,17 @@ import os
 import glob as glob_module
 import platform
 import struct
-from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from ._docx_builder import build_doc, add_file_hyperlink
 from .classifier import (
     attachment_ext,
-    attachment_label,
     attachment_sibling_filename,
     _EMBEDDABLE_IMAGE_MIME,
     _safe_name,
 )
 from .parser import Attachment, Note
-
-if TYPE_CHECKING:
-    from .migrate import AttachmentPolicy
 
 
 # ── filesystem timestamps ─────────────────────────────────────────────────────
@@ -138,28 +135,21 @@ def _unique_path(path: Path) -> Path:
 
 # ── docx helpers ──────────────────────────────────────────────────────────────
 
-def _write_sibling_files(doc, attachments: list[Attachment], title: str, folder: Path, note: Note, policy: "AttachmentPolicy") -> None:
+def _write_sibling_files(doc, attachments: list[Attachment], title: str, folder: Path, note: Note) -> None:
     """
-    Write attachments as sibling files and add hyperlinks into doc for non-image siblings.
-
-    DOC policy:  only non-embeddable attachments (PDFs etc.) become siblings.
-    BOTH policy: all attachments become siblings; images are also embedded in the doc.
-    FILES policy: not called from this path (handled in migrate.py).
+    Write non-image attachments as sibling files and add hyperlinks into doc.
+    Images are always embedded inline and are never written as sibling files.
     """
-    counters: dict[str, int] = defaultdict(int)
+    idx = 0
     for att in attachments:
-        is_image = att.mime in _EMBEDDABLE_IMAGE_MIME
-        if is_image and policy not in ("both", "files"):
-            continue  # in DOC mode, images are only embedded, not written as siblings
-        label = attachment_label(att.mime)
-        counters[label] += 1
-        filename = attachment_sibling_filename(title, label, counters[label], att)
+        if att.mime in _EMBEDDABLE_IMAGE_MIME:
+            continue  # images are embedded, never siblings
+        idx += 1
+        filename = attachment_sibling_filename(title, idx, att)
         sibling = _unique_path(folder / filename)
         sibling.write_bytes(att.data)
         _set_timestamps(sibling, note.created, note.updated)
-        if not is_image:
-            # Only insert hyperlinks for non-image siblings (images are already visible inline)
-            add_file_hyperlink(doc, f"[Attachment: {sibling.name}]", sibling.name)
+        add_file_hyperlink(doc, f"[Attachment: {sibling.name}]", sibling.name)
 
 
 def _save_doc(doc, path: Path, note: Note) -> Path:
@@ -173,9 +163,8 @@ def _save_doc(doc, path: Path, note: Note) -> Path:
 # ── public API ────────────────────────────────────────────────────────────────
 
 class LocalWriter:
-    def __init__(self, output_dir: Path, policy: "AttachmentPolicy", include_tags: bool = True) -> None:
+    def __init__(self, output_dir: Path, include_tags: bool = True) -> None:
         self._output_dir = output_dir
-        self._policy = policy
         self._include_tags = include_tags
 
     def note_exists(self, note: Note, safe_title: str, exact: bool = False) -> bool:
@@ -187,12 +176,11 @@ class LocalWriter:
                 or any(folder.glob(f"{escaped}.*"))
                 or any(folder.glob(f"{escaped}_0.*")))
 
-    def write_doc(self, title: str, attachments: list[Attachment], note: Note, policy: "AttachmentPolicy | None" = None) -> str:
-        policy = policy or self._policy
+    def write_doc(self, title: str, attachments: list[Attachment], note: Note, **_kwargs) -> str:
         folder = note_folder(self._output_dir, note)
         doc = build_doc(note, attachments, include_tags=self._include_tags)
         if attachments:
-            _write_sibling_files(doc, attachments, note.title, folder, note, policy)
+            _write_sibling_files(doc, attachments, note.title, folder, note)
         dest = _save_doc(doc, folder / f"{title}.docx", note)
         return str(dest)
 

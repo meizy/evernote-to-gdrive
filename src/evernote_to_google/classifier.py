@@ -4,7 +4,6 @@ Classify notes into migration categories and compute derived fields.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from enum import Enum, auto
 
@@ -71,26 +70,13 @@ def classify(note: Note) -> ClassifiedNote:
 
 # ── mime helpers ───────────────────────────────────────────────────────────────
 
-# Known application/* labels that can't be cleanly derived from the subtype
-_MIME_LABEL_MAP: dict[str, str] = {
-    "application/pdf": "pdf",
-    "application/msword": "doc",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "doc",
-    "application/vnd.ms-excel": "xls",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xls",
-    "application/vnd.ms-powerpoint": "ppt",
-    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "ppt",
-    "application/octet-stream": "bin",
-    "application/x-zip-compressed": "zip",
-    "application/x-rar-compressed": "rar",
-    "application/x-tar": "tar",
-}
 
 _MIME_EXT_MAP: dict[str, str] = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
     "image/gif": ".gif",
     "image/webp": ".webp",
+    "image/tiff": ".tiff",
     "image/svg+xml": ".svg",
     "audio/mpeg": ".mp3",
     "audio/ogg": ".ogg",
@@ -125,50 +111,47 @@ _MIME_EXT_MAP: dict[str, str] = {
 }
 
 
-def attachment_label(mime: str) -> str:
-    """
-    Return a short label for a MIME type, used in sibling filenames.
-    Labels by primary type: image→img, audio→aud, video→vid, text→txt.
-    application/pdf→pdf; other application/*: derived from subtype (≤3 chars).
-    """
-    mime = mime.lower()
-    primary, _, subtype = mime.partition("/")
-    if primary == "image":
-        return "img"
-    if primary == "audio":
-        return "aud"
-    if primary == "video":
-        return "vid"
-    if primary == "text":
-        return "txt"
-    if mime in _MIME_LABEL_MAP:
-        return _MIME_LABEL_MAP[mime]
-    # Derive from subtype: strip vnd. prefix, take first word segment
-    sub = subtype
-    if sub.startswith("vnd."):
-        sub = sub[4:]
-    sub = re.split(r"[.\-+]", sub)[0]
-    return sub[:3] if sub else "att"
-
 
 def attachment_ext(mime: str) -> str:
-    """Return the file extension (with dot) for a MIME type, or '' if unknown."""
-    return _MIME_EXT_MAP.get(mime.lower(), "")
+    """Return the file extension (with dot) for a MIME type.
+    Uses the lookup table for known types; falls back to the MIME subtype
+    (stripping x- prefix and +suffix, e.g. image/x-bmp → .bmp, image/svg+xml → .svg).
+    Returns '' only if the subtype is empty or unparseable.
+    """
+    mime = mime.lower()
+    if mime in _MIME_EXT_MAP:
+        return _MIME_EXT_MAP[mime]
+    _, _, subtype = mime.partition("/")
+    if subtype.startswith("x-"):
+        subtype = subtype[2:]
+    subtype = subtype.split("+")[0].split(".")[0]
+    return f".{subtype}" if subtype else ""
 
 
 # Backward-compatible alias used internally
 _ext_for_mime = attachment_ext
 
 
-def attachment_sibling_filename(note_title: str, label: str, type_index: int, attachment: Attachment) -> str:
+def attachment_sibling_filename(note_title: str, index: int, attachment: Attachment) -> str:
     """
-    Return the filename for a sibling attachment file.
-    Pattern: <safe_title>_<label>_<n>.<ext>
-    label is the mime-type label (img, pdf, aud, etc.); type_index is 1-based per label.
+    Return the filename for a non-image sibling attachment file.
+    Pattern: <safe_title>_<n>.<ext>  (single global running sequence, 1-based)
     """
     ext = attachment_ext(attachment.mime)
     safe_title = _safe_name(note_title)
-    return f"{safe_title}_{label}_{type_index}{ext}"
+    return f"{safe_title}_{index}{ext}"
+
+
+def image_temp_filename(note_title: str, index: int, attachment: Attachment) -> str:
+    """
+    Return the temporary upload name for an embedded image in gdrive mode.
+    Pattern: <safe_title>_img_<n>.<ext>
+    These files are deleted after embedding. The _img_ infix makes orphaned
+    files easy to identify and remove manually if cleanup fails.
+    """
+    ext = attachment_ext(attachment.mime)
+    safe_title = _safe_name(note_title)
+    return f"{safe_title}_img_{index}{ext}"
 
 
 def sanitize_name(name: str) -> str:

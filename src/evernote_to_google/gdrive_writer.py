@@ -1,24 +1,25 @@
 """
 Google Drive/Docs output mode: write notes to Google Drive.
 
-Image embedding uses a 2-phase flow per note:
-  Phase 1 — Upload all attachments (images + PDFs/other) to the notebook folder.
-             Images also get a public permission so the Drive HTML importer can
-             fetch them and embed them inline.
+Image embedding uses a 3-phase flow per note:
+  Phase 1 — Upload all attachments to the notebook folder.
+             Images are uploaded as temp files (<title>_img_<n>.<ext>) and
+             given a public permission so the Drive HTML importer can fetch and
+             embed them inline.  Non-image siblings are uploaded as permanent
+             files (<title>_<n>.<ext>).
   Phase 2 — Build HTML from the note's ENML (replacing <en-media> tags with
              <img> or <a> elements), then import it as a Google Doc via Drive's
              built-in HTML conversion.  Drive handles all formatting (headings,
              bold, italic, links, RTL) natively.
-  Phase 3 — If policy is 'doc': delete the temp image files (they were only
-             needed for embedding). Non-image files always stay.
+  Phase 3 — Delete the temp image files (they were only needed for embedding).
+             If deletion fails the files remain as identifiable orphans
+             (<title>_img_<n>.<ext>).
 """
 
 from __future__ import annotations
 
 import logging
 import re
-from collections import defaultdict
-from typing import TYPE_CHECKING
 
 _log = logging.getLogger(__name__)
 
@@ -28,8 +29,8 @@ from ._enml import sanitize_enml, parse_media_tag
 from ._image import apply_exif_orientation
 from .classifier import (
     _EMBEDDABLE_IMAGE_MIME,
-    attachment_label,
     attachment_sibling_filename,
+    image_temp_filename,
 )
 from .docs import create_doc, update_doc
 from .interlinks import DeferredNote, rewrite_evernote_links
@@ -46,9 +47,6 @@ from .drive import (
     upload_file,
 )
 from .parser import Attachment, Note
-
-if TYPE_CHECKING:
-    from .migrate import AttachmentPolicy
 
 
 def _delete_image_files(drive, image_file_ids: list[str]) -> None:
@@ -102,10 +100,9 @@ def _enml_to_html(
 
 
 class GDriveWriter:
-    def __init__(self, dest: str, policy: "AttachmentPolicy", include_tags: bool = True) -> None:
+    def __init__(self, dest: str, include_tags: bool = True) -> None:
         self._drive = get_services()
         self._dest = dest
-        self._policy = policy
         self._include_tags = include_tags
         self._folder_cache: dict[str, tuple[str, str]] = {}
         self._file_cache: dict[str, set[str]] = {}  # notebook_id -> set of file names
@@ -129,15 +126,17 @@ class GDriveWriter:
         notebook_id = self._notebook_id(note)
         return safe_title in self._file_cache.get(notebook_id, set())
 
-    def write_doc(self, title: str, attachments: list[Attachment], note: Note, policy: "AttachmentPolicy | None" = None, defer_image_cleanup: bool = False) -> str:
-        policy = policy or self._policy
+    def write_doc(self, title: str, attachments: list[Attachment], note: Note, defer_image_cleanup: bool = False, **_kwargs) -> str:
         _log.debug("going to write note %r as gdoc (%d attachments)", rtl_display(title), len(attachments))
         parent_id = self._notebook_id(note)
         desc = make_description(note.created, note.source_url, tags=note.tags if self._include_tags else None)
         mtime = note.updated or note.created
 
-        # Phase 1: upload all attachments and build URL maps
-        counters: dict[str, int] = defaultdict(int)
+        # Phase 1: upload all attachments and build URL maps.
+        # Images → temp files (<title>_img_<n>.<ext>), deleted after embedding.
+        # Non-images → permanent sibling files (<title>_<n>.<ext>).
+        img_idx = 0
+        sib_idx = 0
         image_file_ids: list[str] = []
         hash_to_img_url: dict[str, str] = {}
         hash_to_link: dict[str, tuple[str, str]] = {}
@@ -145,14 +144,20 @@ class GDriveWriter:
         _MAX_IMAGES = 100
         skipped_images = 0
         for att in attachments:
-            if att.mime in _EMBEDDABLE_IMAGE_MIME and len(image_file_ids) >= _MAX_IMAGES:
+            is_image = att.mime in _EMBEDDABLE_IMAGE_MIME
+            if is_image and len(image_file_ids) >= _MAX_IMAGES:
                 skipped_images += 1
                 continue
-            label = attachment_label(att.mime)
-            counters[label] += 1
-            filename = attachment_sibling_filename(note.title, label, counters[label], att)
 
-            upload_data = apply_exif_orientation(att.data, att.mime) if att.mime in _EMBEDDABLE_IMAGE_MIME else att.data
+            if is_image:
+                img_idx += 1
+                filename = image_temp_filename(note.title, img_idx, att)
+                upload_data = apply_exif_orientation(att.data, att.mime)
+            else:
+                sib_idx += 1
+                filename = attachment_sibling_filename(note.title, sib_idx, att)
+                upload_data = att.data
+
             file_id = upload_file(
                 self._drive,
                 name=filename,
@@ -163,7 +168,7 @@ class GDriveWriter:
                 modified_time=mtime,
             )
 
-            if att.mime in _EMBEDDABLE_IMAGE_MIME:
+            if is_image:
                 hash_to_img_url[att.hash] = f"https://drive.google.com/uc?export=download&id={file_id}"
                 image_file_ids.append(file_id)
             else:
@@ -172,7 +177,7 @@ class GDriveWriter:
         if skipped_images:
             _log.warning("note %r: skipped %d image(s) exceeding the 100-image limit", rtl_display(title), skipped_images)
 
-        # Phase 1b: set public permissions on images
+        # Phase 1b: set public permissions on temp image files
         if len(image_file_ids) == 1:
             fid = image_file_ids[0]
             _log.debug("making image file %s public", fid)
@@ -198,12 +203,13 @@ class GDriveWriter:
             modified_time=mtime,
         )
 
-        # Phase 3: delete temp image files if policy is 'doc'
+        # Phase 3: delete temp image files (images are always embedded, never kept as siblings).
+        # Deferred when the note has inter-note links that need a second pass.
         if defer_image_cleanup:
             self._deferred_img_url = hash_to_img_url
             self._deferred_link = hash_to_link
             self._deferred_image_ids = image_file_ids
-        elif policy == "doc":
+        else:
             _delete_image_files(self._drive, image_file_ids)
 
         return doc_id

@@ -145,12 +145,11 @@ def analyze(ctx, input: Path, all_reports_flag: bool):
 @click.option("--note", default=None,
               help="Only migrate the note with this exact title (--notebook must also be specified).")
 @click.option("--attachments",
-              type=click.Choice(["doc", "files", "both"], case_sensitive=False),
+              type=click.Choice(["doc", "files"], case_sensitive=False),
               default="doc", show_default=True,
-              help="How to handle attachments: "
-                   "doc=embed images in doc + link PDFs (delete temp image files); "
-                   "files=one raw file per attachment; "
-                   "both=embed images in doc AND keep all as sibling files.")
+              help="How to handle attachment-only notes with multiple non-image attachments: "
+                   "doc=create a doc listing all attachments as sibling files (default); "
+                   "files=sibling files only, no doc.")
 @click.option("--log-file", type=click.Path(path_type=Path),
               default=None,
               help="Write migration log (CSV) to this file.")
