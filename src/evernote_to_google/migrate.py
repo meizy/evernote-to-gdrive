@@ -135,6 +135,7 @@ def _run_progress(filtered: list[NotebookInfo], total: int, options: MigrationOp
                 records.append(record)
                 _collect_title(record, title_to_doc_id, duplicate_titles)
                 progress.advance(task)
+        progress.update(task, description="[green]complete[/]")
 
 
 def _rewrite_interlinks(writer, deferred: list[DeferredNote], title_to_doc_id: dict[str, str],
@@ -169,6 +170,7 @@ def _rewrite_interlinks(writer, deferred: list[DeferredNote], title_to_doc_id: d
                 except Exception as exc:
                     _log.error("rewriting links for %s: %s", rtl_display(d.title), exc)
                 progress.advance(task)
+            progress.update(task, description="[green]complete[/]")
     console.print(f"  [dim]Links rewritten: {total_resolved} resolved, {total_unresolved} unresolved")
 
 
