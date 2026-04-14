@@ -471,25 +471,6 @@ Inspect `.enex` files and report statistics (no upload).
 | `--write-csv DIR` | Also write each report table as a CSV file in `DIR`. |
 
 
-## Releasing (maintainers)
-
-Releases are fully automated via GitHub Actions. To cut a release:
-
-1. Bump `version` in `pyproject.toml` and commit.
-2. Tag and push:
-   ```bash
-   git tag v0.1.5
-   git push origin v0.1.5
-   ```
-
-This triggers two workflows in parallel:
-
-- `publish-pypi.yml` — builds sdist + wheel and uploads to PyPI via Trusted Publishing (no token needed). Fails if the tag version doesn't match `pyproject.toml`.
-- `build-binaries.yml` — builds standalone PyInstaller binaries on Linux, Windows, and macOS, and attaches them to the GitHub Release.
-
-One-time setup required: PyPI Trusted Publisher entry for this repo + workflow `publish-pypi.yml` + environment `pypi`, plus a matching `pypi` environment in GitHub repo settings.
-
-
 ## Getting help
 
 If you found a bug or have a feature request, please [open a new issue](https://github.com/meizy/evernote-to-gdrive/issues).

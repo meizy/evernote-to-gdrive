@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "evernote-to-gdrive"
-version = "0.1.5"
+version = "0.1.6"
 description = "Migrate Evernote notes to Google Drive"
 requires-python = ">=3.10"
 dependencies = [
