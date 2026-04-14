@@ -77,6 +77,11 @@ chmod +x evernote-to-gdrive
 ./evernote-to-gdrive install-browsers   # only needed for web clips
 ```
 
+> On macOS, if you get a "cannot be verified" error - remove the quarantine attribute:
+> ```bash
+> xattr -d com.apple.quarantine ./evernote-to-gdrive
+> ```
+
 On Windows, unzip the archive, then from that folder:
 
 ```powershell
