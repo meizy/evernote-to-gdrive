@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE en-export SYSTEM "http://xml.evernote.com/pub/evernote-export4.dtd">
+<en-export>
+        <note>
+          <title>Web Clip Plain</title>
+          <created>20240101T000000Z</created>
+          <updated>20240101T000000Z</updated>
+          <note-attributes><source-url>https://example.com/article</source-url></note-attributes>
+          <content><![CDATA[<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE en-note SYSTEM "http://xml.evernote.com/pub/en-note.dtd">
+<en-note><div>Article text</div></en-note>]]></content>
+
+
+        </note>
+        <note>
+          <title>Web Clip With Image</title>
+          <created>20240101T000000Z</created>
+          <updated>20240101T000000Z</updated>
+          <note-attributes><source-url>https://example.com/gallery</source-url></note-attributes>
+          <content><![CDATA[<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE en-note SYSTEM "http://xml.evernote.com/pub/en-note.dtd">
+<en-note><div>Article text</div><en-media hash="f39d8417ad69735e65568644f73db9d8" type="image/png"/></en-note>]]></content>
+          <resource>
+  <data encoding="base64">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</data>
+  <mime>image/png</mime>
+  <resource-attributes><file-name>photo.png</file-name></resource-attributes>
+</resource>
+
+        </note>
+</en-export>

@@ -1,0 +1,42 @@
+# Sensitive config
+.config/
+.claude/
+CLAUDE.md
+AGENTS.md
+
+# Evernote exports
+export/
+output/
+Evernote Migration/
+
+# Database
+*.db
+
+# Spike
+spike_out/
+
+# E2e test output
+tests/output/
+
+# macOS download artifacts
+*.download/
+
+# Cache
+.cache/
+temp/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv*/
+dist/
+build/
+
+# macOS
+.DS_Store
+README.pdf
+profile.*
+note-to-myself.md
+REQUIREMENTS.md
+scripts/md_to_pdf.py
