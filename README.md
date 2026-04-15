@@ -232,7 +232,7 @@ When a note has a source URL (set by the Evernote Web Clipper, or manually), it 
 
 Notes written in Hebrew, Arabic, or other right-to-left scripts are rendered with correct text direction in both gdrive and local output.
 
-### What you keep / what you lose
+## What you keep / what you lose
 
 Most Evernote content migrates cleanly, including notebook structure, note body content, formatting, attachments, timestamps, and links between notes when they can be matched.
 
