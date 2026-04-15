@@ -14,8 +14,8 @@ A migration tool that converts an Evernote export into Google Drive or a local f
 - Mirrors your **Stack / Notebook / Note** hierarchy in Google Drive or on disk
 - **Two output modes** — Google Drive (Google Docs) or local (`.docx`)
 - **Smart per-note layout** — text-only → single doc · single attachment → raw file · mixed → doc + numbered siblings
-- **Formatting preserved** — headings, bold, italic, tables, lists, font sizes and colors
-- **Inline image embedding** — JPEG/PNG/GIF/WebP, checkboxes preserved
+- **Formatting preserved** — headings, bold/italic, tables, lists, checkboxes, font sizes and colors
+- **Inline image embedding** — JPEG/PNG/GIF/WebP
 - **Inter-note links** — links between notes are preserved (Google Doc URLs in gdrive mode; relative .docx links in local mode)
 - **Web clips** — rendered as "Reader view" PDFs
 - **Resume-safe** — interrupted runs pick up where they left off
