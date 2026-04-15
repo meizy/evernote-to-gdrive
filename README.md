@@ -4,7 +4,7 @@
 [![Python >=3.10](https://img.shields.io/pypi/pyversions/evernote-to-gdrive)](https://pypi.org/project/evernote-to-gdrive/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-A migration tool that converts an [evernote-backup](https://github.com/vzhd1701/evernote-backup) `.enex` export into Google Drive or a local folder tree. Preserves your notebook and stack hierarchy, attachments, tags, timestamps, inter-note links, and web-clip fidelity.
+A migration tool that converts an Evernote export into Google Drive or a local folder tree. Preserves your notebook and stack hierarchy, attachments, tags, timestamps, inter-note links, and web-clip fidelity.
 
 > **Not a sync tool.** Run it once to migrate, then you're done.
 
