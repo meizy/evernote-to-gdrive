@@ -124,12 +124,15 @@ evernote-to-gdrive migrate ./export
 
 Notes are created under a folder called `Evernote Migration` in your My Drive. Use `--dest` to choose a different location.
 
-On the first `gdrive` run, the tool opens your browser and asks for Google Drive permission.
+Notes:
 
-- If Google shows an unverified-app warning, click **Continue**.
-- On the permissions screen, approve the requested Google Drive access and click **Continue**.
+- This tool can only access folders and files it created itself. In `gdrive` mode, if you run `--dest a/b` and a folder named `a` already exists in My Drive but was created outside this tool, the tool cannot reuse it 
+and will create its own `a` folder instead.
 
-After that, the saved token is reused on later runs.
+- On the first `gdrive` run, the tool opens your browser and asks for Google Drive permission.
+
+  - If Google shows an unverified-app warning, click **Continue**.
+  - On the permissions screen, approve the requested Google Drive access and click **Continue**.
 
 > **Migration time** — gdrive mode is throttled to ~3 Drive API writes/second. Actual duration depends on note count, attachment sizes, and network speed. As a rough reference, ~1,000 notes took about 1 hour. Local mode is much faster: less than a minue for 1,000 notes.
 
@@ -390,7 +393,7 @@ Migrate Evernote notes to Google Drive (`gdrive`) or a local folder (`local`).
 | Flag | Default | Description |
 |---|---|---|
 | `--output {gdrive\|local}` | `gdrive` | `gdrive`: upload to Google Drive. `local`: save to a local folder. |
-| `--dest PATH` | `Evernote Migration` | Drive folder path (gdrive) or local folder (local),  can be multi-level (`folder1/folder2`)|
+| `--dest PATH` | `Evernote Migration` | Drive folder path (gdrive) or local folder (local), can be multi-level (`folder1/folder2`). In `gdrive` mode, existing parent folders are only reused if they were created by this tool. |
 | `--secrets-folder PATH` | current directory | Folder containing `token.json` and, if needed, `client_secrets.json` (gdrive only). |
 | `--log-file PATH` | None | Write migration log (CSV) to this file. |
 
