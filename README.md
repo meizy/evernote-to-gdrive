@@ -330,8 +330,7 @@ Links between notes are preserved in both output modes - google doc URLs or .doc
 - **Unresolved links** appear as `[link to "title" not resolved]`, warnings printed to the console.
 - **Two-pass approach** — pass 1 migrates all notes, pass 2 rewrites the links. 
 Inter-note links only become live after pass 2 completes.
-- **filtered runs** (`--note`, `--notebook`) will not resolve links to other notes if 
-those notes are not part of this run.
+- **Filtered runs** (`--note`, `--notebook`) will not resolve links to notes that are not part of this run.
 - **Gdrive mode** — links become clickable Google Doc or Drive file URLs.
 - **Local mode** — links become relative paths between `.docx` files, clickable in Word/LibreOffice. Moving the entire output folder preserves them; uploading an individual `.docx` to Google Drive does not.
 
