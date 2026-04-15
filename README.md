@@ -288,7 +288,8 @@ Useful for incremental runs or for re-migrating a single notebook after a change
 
 ### Resume and force re-export
 
-By default the tool never re-uploads a note that already exists at the destination — interrupted runs resume automatically. To override:
+By default the tool never re-uploads a note that already exists at the destination — so 
+interrupted runs will skip all existing files . To override:
 
 ```bash
 evernote-to-gdrive migrate ./export --force
