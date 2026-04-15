@@ -395,7 +395,7 @@ Authenticate with Google and save `token.json`.
 
 Migrate Evernote notes to Google Drive (`gdrive`) or a local folder (`local`).
 
-**Destination**
+**Destinations**
 
 | Flag | Default | Description |
 |---|---|---|
