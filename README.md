@@ -32,7 +32,7 @@ macOS, Windows, and Linux.
 
 1. [Export your Evernote data](#export-your-evernote-data)
 
-2. [Install the package](#install-the-package)
+2. [Install the package](#install)
 
 3. [Migrate](#migrate-to-google-drive)
  
