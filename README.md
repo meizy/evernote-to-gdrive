@@ -324,7 +324,7 @@ evernote-to-gdrive migrate ./export --web-clip doc          # Google Doc or .doc
 
 ### Inter-note links
 
-Links between notes are preserved in both output modes - google doc URLs or .docx relative links.
+Links between notes are preserved in both output modes.
 
 - **Matching is title-based** — notes that were after a link was created will fail,to resolve.
 - **Unresolved links** appear as `[link to "title" not resolved]`, warnings printed to the console.
