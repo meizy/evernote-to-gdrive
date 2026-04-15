@@ -244,9 +244,9 @@ There are a few limitations to be aware of:
 - external image URLs - Some web clips may reference external image URLs that are not embedded in the export. When that happens, those images cannot be preserved.
 - Inter-note links - links are matched by note title. If the target note cannot be matched by title, the link will remain unresolved. This can happen if the linked note was renamed after the link was created. 
 
-Additional notes:
+Web clips:
 
-- Web clips are converted into a clean reading view, so their layout may differ from how they looked in Evernote.
+Web clips are converted into a clean reading view, so their layout may differ from how they looked in Evernote.
 
 In gdrive mode:
 
