@@ -3,15 +3,16 @@ GDrive e2e test: migration to Google Drive covers all note kinds and stacks.
 
 Run with:  pytest -m gdrive -v
 Run with cleanup:  pytest -m gdrive -v --cleanup-gdrive
-Skipped automatically if OAuth credentials are not available.
+Uses the normal auth flow and saves OAuth files under .auth/.
+Skipped automatically if client secrets are not available.
 """
 
 from pathlib import Path
 
 import pytest
 
-from evernote_to_gdrive.auth import token_path, get_services
 from collections import Counter
+from evernote_to_gdrive.auth import get_services
 
 from evernote_to_gdrive.drive_files import _list_folder_files_pairs, list_folder_files, list_folder_files_all
 from evernote_to_gdrive.drive_folders import find_folder, find_folder_path
@@ -63,11 +64,13 @@ _EXPECTED_SANITY_FILES = {
 
 @pytest.fixture(scope="module")
 def gdrive_migration(request, gdrive_secrets_dir: Path):
-    if not token_path(gdrive_secrets_dir).exists():
-        pytest.skip("Google Drive credentials not available (no token.json)")
-
     print(f"\n>>> GDrive output → {DEST}")
-    drive = get_services(secrets_folder=gdrive_secrets_dir)
+    try:
+        drive = get_services(secrets_folder=gdrive_secrets_dir)
+    except SystemExit as exc:
+        if exc.code == 1:
+            pytest.skip("Google Drive client secrets not available for auth")
+        raise
 
     # Clean up any previous test run (mirrors local sanity's shutil.rmtree)
     eg_id = find_folder(drive, "evernote-to-gdrive")

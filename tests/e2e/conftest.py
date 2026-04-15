@@ -85,7 +85,7 @@ OUTPUT_DIR = Path(__file__).parent.parent / "output" / "sanity"
 @pytest.fixture(scope="session")
 def gdrive_secrets_dir() -> Path:
     """Temporary test-only location for Google OAuth files."""
-    return resolve_secrets_dir(Path(".config"))
+    return resolve_secrets_dir(Path(".auth"))
 
 
 @pytest.fixture(scope="session")

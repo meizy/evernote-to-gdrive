@@ -50,10 +50,14 @@ where = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["tests/e2e"]
 addopts = "-v"
+filterwarnings = [
+    "ignore:datetime\\.datetime\\.utcfromtimestamp\\(\\) is deprecated and scheduled for removal in a future version\\.:DeprecationWarning:google_auth_oauthlib\\.helpers",
+]
 testpaths = [
     "tests/e2e/test_local_sanity.py",
     "tests/e2e/test_sanity_negative.py",
     "tests/e2e/test_analyze.py",
+    "tests/e2e/test_auth.py",
     "tests/e2e/test_cli_errors.py",
     "tests/e2e/test_extended.py",
     "tests/e2e/test_migrate_flags.py",
@@ -64,6 +68,7 @@ testpaths = [
 markers = [
     "sanity: fast local migration sanity tests",
     "local: all tests that run locally without external services",
+    "auth: authentication command tests",
     "webclip: real Playwright + Readability pipeline (requires playwright install)",
     "gdrive: Google Drive integration tests (requires OAuth credentials)",
 ]
