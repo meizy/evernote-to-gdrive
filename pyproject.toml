@@ -1,0 +1,74 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "evernote-to-gdrive"
+version = "0.1.12"
+description = "Migrate Evernote notes to Google Drive"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "click>=8.1",
+    "lxml>=5.0",
+    "google-api-python-client>=2.100",
+    "google-auth-httplib2>=0.2",
+    "google-auth-oauthlib>=1.1",
+    "rich>=13.0",
+    "html-for-docx>=1.1.4",
+    "python-docx>=1.1",
+    "Pillow>=10.0",
+    "playwright>=1.40",
+]
+
+[project.optional-dependencies]
+spike = [
+    "playwright>=1.40",
+]
+test = [
+    "pytest>=8.0",
+]
+build = [
+    "pyinstaller>=6.5",
+]
+
+[project.scripts]
+evernote-to-gdrive = "evernote_to_gdrive.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"evernote_to_gdrive._bundled_auth" = ["client_secrets.json"]
+
+[tool.pytest.ini_options]
+pythonpath = ["tests/e2e"]
+addopts = "-v"
+filterwarnings = [
+    "ignore:datetime\\.datetime\\.utcfromtimestamp\\(\\) is deprecated and scheduled for removal in a future version\\.:DeprecationWarning:google_auth_oauthlib\\.helpers",
+]
+testpaths = [
+    "tests/e2e/test_local_sanity.py",
+    "tests/e2e/test_sanity_negative.py",
+    "tests/e2e/test_analyze.py",
+    "tests/e2e/test_auth.py",
+    "tests/e2e/test_cli_errors.py",
+    "tests/e2e/test_extended.py",
+    "tests/e2e/test_migrate_flags.py",
+    "tests/e2e/test_resume_skip.py",
+    "tests/e2e/test_webclip_real.py",
+    "tests/e2e/test_gdrive_sanity.py",
+]
+markers = [
+    "sanity: fast local migration sanity tests",
+    "local: all tests that run locally without external services",
+    "auth: authentication command tests",
+    "webclip: real Playwright + Readability pipeline (requires playwright install)",
+    "gdrive: Google Drive integration tests (requires OAuth credentials)",
+]
