@@ -1,7 +1,5 @@
 # Sensitive config
-.config/
-.auth/client_secrets.json
-.auth/token.json
+.auth/
 src/evernote_to_gdrive/_bundled_auth/client_secrets.json
 .claude/
 CLAUDE.md
@@ -38,8 +36,6 @@ build/
 
 # macOS
 .DS_Store
-README.pdf
 profile.*
 note-to-myself.md
 REQUIREMENTS.md
-scripts/md_to_pdf.py
