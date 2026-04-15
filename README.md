@@ -269,7 +269,7 @@ evernote-to-gdrive analyze ./export --findnote "Carbonara"       # which noteboo
 evernote-to-gdrive analyze ./export --all --write-csv ./reports  # write output to csv files
 ```
 
-See the Reference section below for the full reference.
+See the [Reference](#reference) section below for the full reference.
 
 
 ## Advanced
