@@ -16,7 +16,7 @@ A migration tool that converts an Evernote export into Google Drive or a local f
 - **Smart per-note layout** — text-only → single doc · single attachment → raw file · mixed → doc + numbered siblings
 - **Formatting preserved** — headings, bold/italic, tables, lists, checkboxes, font sizes and colors
 - **Inline image embedding** — JPEG/PNG/GIF/WebP
-- **Inter-note links** — links between notes are preserved (Google Doc URLs in gdrive mode; relative .docx links in local mode)
+- **Inter-note links** — links between notes are preserved
 - **Web clips** — rendered as "Reader view" PDFs
 - **Resume-safe** — interrupted runs pick up where they left off
 - **Analyze mode** — pre-flight inspection: analyze an export for note counts, tag census, MIME breakdown, and much more.
@@ -320,7 +320,7 @@ evernote-to-gdrive migrate ./export --web-clip doc          # Google Doc or .doc
 
 ### Inter-note links
 
-Links between notes are preserved in both output modes.
+Links between notes are preserved in both output modes - google doc URLs or .docx relative links.
 
 - **Matching is title-based** — ENEX exports have no note GUIDs, so notes that were renamed between export and migration will lose their link targets.
 - **Unresolved links** appear as `[link to "title" not resolved]`, warnings printed to the console.
