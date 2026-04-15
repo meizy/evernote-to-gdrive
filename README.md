@@ -340,7 +340,7 @@ To opt out:
 evernote-to-gdrive migrate ./export --skip-note-links
 ```
 
-### Attachments layout
+### Attachments policy
 
 Applies only to notes that contain multiple non-image attachments and no text. By default a document is created with links to the sibling files. To skip that document and output only the raw files:
 
@@ -352,7 +352,7 @@ evernote-to-gdrive migrate ./export --attachments files
 
 ```bash
 evernote-to-gdrive migrate ./export --log-file migration.csv   # per-note CSV log
-evernote-to-gdrive migrate ./export --verbose                  # per-note progress lines
+evernote-to-gdrive migrate ./export --verbose                  # per-note lines printed
 ```
 
 ### Custom credentials location
@@ -364,7 +364,9 @@ evernote-to-gdrive auth    --secrets-folder /path/to/creds
 evernote-to-gdrive migrate ./export --secrets-folder /path/to/creds
 ```
 
-Most users should not need a manual `client_secrets.json` anymore. If the bundled auth flow does not work for your environment, the old manual setup guide is still available at [docs/google-credentials-setup.md](./docs/google-credentials-setup.md).
+Most users should not need a manual setup for `client_secrets.json` . 
+If the bundled auth flow does not work for your environment, 
+a manual setup guide is available at [docs/google-credentials-setup.md](./docs/google-credentials-setup.md).
 
 
 ## Reference
