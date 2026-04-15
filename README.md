@@ -19,7 +19,7 @@ A migration tool that converts an Evernote export into Google Drive or a local f
 - **Inter-note links** — links between notes are preserved
 - **Web clips** — rendered as "Reader view" PDFs
 - **Resume-safe** — interrupted runs pick up where they left off
-- **Analyze mode** — pre-flight inspection: analyze an export for note counts, tag census, MIME breakdown, and much more.
+- **Analyze mode** — pre-flight inspection: analyze an export for note counts, tag census, MIME breakdown, and more.
 
 
 ## Platform support
