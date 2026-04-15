@@ -194,9 +194,7 @@ Each note is migrated as one or more files depending on its content:
 | Single attachment, no text | The raw file as-is (`myNote.pdf`, `myNote.png`, ...) |
 | Text with images | Single document with images embedded inline |
 | Text with non-image attachments | Document + sibling files numbered `_1`, `_2`, … (`myNote_0` + `myNote_1.pdf` + `myNote_2.pdf`) |
-| Multiple non-image attachments, no text | A document with links to siblings (default), 
-or just the sibling files with  
-`--attachments files` |
+| Multiple non-image attachments, no text | A document with links to siblings (default), or just the sibling files with `--attachments files` |
 
 Images (JPEG, PNG, GIF, WebP) are always embedded in the document. Non-image attachments (PDFs, audio, etc.) are always written as separate sibling files alongside the document — except for the last case above, where `--attachments files` skips creating the links document entirely.
 
