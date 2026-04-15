@@ -86,7 +86,12 @@ On Windows, unzip the archive, then from that folder:
 
 #### Option 2: pipx (requires Python 3.10+)
 
-[pipx](https://pipx.pypa.io) installs the tool in an isolated environment and makes the `evernote-to-gdrive` command globally available without touching your other Python packages.
+```bash
+pipx install evernote-to-gdrive
+evernote-to-gdrive install-browsers
+```
+
+You can skip the install-browsers command if you don't have web clips in your evernote.
 
 If you don't have pipx yet:
 ```bash
@@ -95,12 +100,6 @@ python -m pipx ensurepath
 ```
 Then restart your terminal.
 
-```bash
-pipx install evernote-to-gdrive
-evernote-to-gdrive install-browsers
-```
-
-You can skip the install-browsers command if you don't have web clips in your evernote.
 
 ## Usage
 
@@ -184,7 +183,7 @@ Evernote Migration/                   ← destination root (--dest)
 
 In **gdrive mode**, docs are Google Docs (no file extension shown above). In **local mode**, the same docs are written as `.docx` files (`Pasta Basics.docx`, `Ragù Bolognese_0.docx`, …).
 
-### Note to File conversion
+### Note-to-File conversion
 
 Each note is migrated as one or more files depending on its content:
 
@@ -213,7 +212,7 @@ evernote-to-gdrive migrate ./export --no-tags
 
 ### Note timestamps
 
-**Gdrive mode** — the Drive API does not allow setting a file's creation time. Drive's `modifiedTime` can be set to either the note's `updated` or `created` time, depending on the `--gdrive-modified` flag (default `created`):
+**Gdrive mode** — the Drive API does not allow setting a file's creation time. The tool sets the Drive's `modifiedTime` to either the note's `updated` or `created` time, depending on the `--gdrive-modified` flag (default `created`):
 
 ```bash
 evernote-to-gdrive migrate ./export --gdrive-modified created   # default: note's original creation date
@@ -222,7 +221,7 @@ evernote-to-gdrive migrate ./export --gdrive-modified updated   # note's last-mo
 
 Both `Created:` and `Updated:` are written into the file's **description** field
 
-**Local mode** — file `mtime` is set to the note's `updated` (falling back to `created`). On macOS and Windows the file's **birth/creation time** is also set to the note's `created`; on Linux only `mtime` is set. Applies to the main document, raw single-file attachments, and all sibling files.
+**Local mode** — file `mtime` (modified time) is set to the note's `updated` (falling back to `created`). On macOS and Windows the file's **birth/creation time** is also set to the note's `created`; on Linux only `mtime` is set. Applies to the main document, raw single-file attachments, and all sibling files.
 
 ### Source URL
 
@@ -241,18 +240,13 @@ There are a few limitations to be aware of:
 - Tags - are stored in the file Description (gdrive) and as the first line in docx (local).
 - Metadata - Author and geolocation, Tasks and Reminders - not preserved.
 - Encrypted Evernote content - removed during migration.
-- external image URLs - Some web clips may reference external image URLs that are not embedded in the export. When that happens, those images cannot be preserved.
+- External image URLs - Some web clips may reference external image URLs that are not embedded in the export. When that happens, those images cannot be preserved.
 - Inter-note links - links are matched by note title. If the target note cannot be matched by title, the link will remain unresolved. This can happen if the linked note was renamed after the link was created. 
+- Images limit (gdrive) - Google Docs is limited to 100 embedded images per note. Any images after the 100th are skipped with a warning. Local mode does not have this limit.
+- Timestamps - see [here](#note-timestamps)
 
-Web clips:
-
+Web clips:  
 Web clips are converted into a clean reading view, so their layout may differ from how they looked in Evernote.
-
-In gdrive mode:
-
-- Timestamps - Google Drive does not allow the original Evernote creation time to be stored as the file creation timestamp. The Drive "Date modified" value is set from the Evernote created time by default, or from the updated time if you use `--gdrive-modified updated`.
-  - Both the original Evernote `Created:` and `Updated:` timestamps are written to the Drive file description.
-- images limit - Google Docs is limited to 100 embedded images per note. Any images after the 100th are skipped with a warning. Local mode does not have this limit.
 
 
 ## Analyze
@@ -314,12 +308,12 @@ The original page's URL is added as a source bar at the top of the PDF (along wi
 
 Notes that originated from a web clip are run through a Readability.js + headless Chromium pipeline to produce a clean, "Reader View"-style PDF — similar to Chrome or Safari Reader View. Because the page is re-flowed rather than reproduced verbatim, **the result will not look exactly like what Evernote displayed** — layout, fonts, and non-article chrome are intentionally discarded in favor of a readable article view.
 
-Requires `playwright install chromium` (see Install).
+Requires the `install-browsers` command (see [Install](#install)).
 
 ```bash
 evernote-to-gdrive migrate ./export --web-clip pdf          # default
-evernote-to-gdrive migrate ./export --clip-theme dark       # PDF will be in dark theme
 evernote-to-gdrive migrate ./export --web-clip doc          # Google Doc or .docx instead
+evernote-to-gdrive migrate ./export --clip-theme dark       # PDF will be in dark theme
 ```
 
 ### Inter-note links
@@ -378,6 +372,7 @@ Type `evernote-to-gdrive <command> --help` to get the same reference below.
 | Command | Description |
 |---------|-------------|
 | `auth` | Authorize with Google Drive and save `token.json` |
+| `install-browsers` | Install Chromium for web clip PDF rendering |
 | `analyze INPUT` | Inspect `.enex` files and print statistics (no upload) |
 | `migrate INPUT` | Migrate notes to Google Drive or a local folder |
 
@@ -390,6 +385,12 @@ Authenticate with Google and save `token.json`.
 | Flag | Default | Description |
 |---|---|---|
 | `--secrets-folder PATH` | current directory | Folder containing `token.json` and, if needed, `client_secrets.json`. |
+
+### `install-browsers`
+
+Install Chromium for web clip PDF rendering.
+
+Requires no flags.
 
 ### `migrate` options
 
