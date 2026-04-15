@@ -1,5 +1,8 @@
 # Sensitive config
 .config/
+.auth/client_secrets.json
+.auth/token.json
+src/evernote_to_gdrive/_bundled_auth/client_secrets.json
 .claude/
 CLAUDE.md
 AGENTS.md

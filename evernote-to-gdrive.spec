@@ -2,8 +2,11 @@
 # PyInstaller spec for evernote-to-gdrive.
 # Build: pyinstaller evernote-to-gdrive.spec --clean --noconfirm
 
+from pathlib import Path
+
 from PyInstaller.utils.hooks import collect_submodules
 
+a = None
 hiddenimports = []
 hiddenimports += collect_submodules("googleapiclient")
 hiddenimports += collect_submodules("google.auth")
@@ -13,11 +16,16 @@ hiddenimports += [
     "google.auth.transport.requests",
 ]
 
+client_secrets = Path(".auth/client_secrets.json")
+datas = []
+if client_secrets.exists():
+    datas.append((str(client_secrets), "evernote_to_gdrive/_bundled_auth"))
+
 a = Analysis(
     ["scripts/pyinstaller_entry.py"],
     pathex=["src"],
     binaries=[],
-    datas=[],
+    datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},

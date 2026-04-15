@@ -9,19 +9,18 @@ Default secrets folder: the current working directory.
 
 Override the folder with --secrets-folder when calling `auth` or `migrate`.
 
-The caller must place their OAuth client secrets (client_secrets.json) in
-the secrets folder (downloaded from Google Cloud Console → APIs & Services →
-Credentials → OAuth 2.0 Client IDs → Desktop application).
-
-The Google account that will run the migration must also be added as a test
-user in the OAuth consent screen (APIs & Services → OAuth consent screen →
-Test users) while the app remains in 'Testing' publishing status.
+If client_secrets.json is not present in the secrets folder, the package will
+use a bundled project client when one was included in the build and copy it
+into the secrets folder on first use. In source checkouts, a repo-local
+.auth/client_secrets.json is also accepted as the source of truth.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
+from importlib import resources
 from pathlib import Path
 
 import google.auth.exceptions
@@ -29,6 +28,8 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+
+from ._runtime_paths import repo_root_or_none
 
 _log = logging.getLogger(__name__)
 
@@ -57,7 +58,7 @@ def resolve_secrets_dir(override: Path | None) -> Path:
 
 def _load_or_refresh_credentials(secrets_dir: Path) -> Credentials:
     token_file = token_path(secrets_dir)
-    secrets_file = client_secrets_path(secrets_dir)
+    secrets_file = _ensure_client_secrets(secrets_dir)
 
     creds: Credentials | None = None
 
@@ -77,19 +78,16 @@ def _load_or_refresh_credentials(secrets_dir: Path) -> Credentials:
             token_file.unlink(missing_ok=True)
 
     # Need fresh authorization
-    if not secrets_file.exists():
+    if secrets_file is None:
         print(
-            f"\nError: OAuth client secrets file not found at:\n  {secrets_file}\n\n"
-            "To set up authentication:\n"
-            "  1. Go to https://console.cloud.google.com/\n"
-            "  2. Create a project and enable the Drive API\n"
-            "  3. Create OAuth 2.0 credentials (Desktop application)\n"
-            f"  4. Download and save as: {secrets_file}\n"
-            "  5. In the OAuth consent screen, add your Google account as a test user\n"
-            "     (APIs & Services → OAuth consent screen → Test users)\n"
-            "     This is required while the app is in 'Testing' publishing status.\n"
-            "\nBy default the tool looks in the current working directory. "
-            "Use --secrets-folder to point to a different location.\n",
+            f"\nError: OAuth client secrets file not found.\n\n"
+            f"Looked for:\n  {client_secrets_path(secrets_dir)}\n"
+            "and no bundled project client was included in this build.\n\n"
+            "If this release was meant to be self-contained, rebuild it with "
+            ".auth/client_secrets.json available at build time.\n"
+            "Otherwise, follow the manual setup guide:\n"
+            "  docs/google-credentials-setup.md\n"
+            "\nUse --secrets-folder to point to a different location.\n",
             file=sys.stderr,
         )
         raise SystemExit(1)
@@ -99,6 +97,44 @@ def _load_or_refresh_credentials(secrets_dir: Path) -> Credentials:
     creds = flow.run_local_server(port=0, open_browser=True)
     _save_token(creds, secrets_dir)
     return creds
+
+
+def _bundled_client_secrets_text() -> str | None:
+    try:
+        return resources.files("evernote_to_gdrive._bundled_auth").joinpath(_SECRETS_FILE).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    except ModuleNotFoundError:
+        return None
+
+
+def _repo_client_secrets_text() -> str | None:
+    repo_root = repo_root_or_none()
+    if repo_root is None:
+        return None
+    source = repo_root / ".auth" / _SECRETS_FILE
+    if not source.exists():
+        return None
+    return source.read_text(encoding="utf-8")
+
+
+def _ensure_client_secrets(secrets_dir: Path) -> Path | None:
+    secrets_file = client_secrets_path(secrets_dir)
+    if secrets_file.exists():
+        return secrets_file
+
+    bundled = _bundled_client_secrets_text()
+    if bundled is None:
+        bundled = _repo_client_secrets_text()
+    if bundled is None:
+        return None
+
+    # Validate before writing so release packaging mistakes fail clearly.
+    json.loads(bundled)
+    secrets_dir.mkdir(parents=True, exist_ok=True)
+    secrets_file.write_text(bundled, encoding="utf-8")
+    _log.info("Wrote bundled OAuth client to %s", secrets_file)
+    return secrets_file
 
 
 def _save_token(creds: Credentials, secrets_dir: Path) -> None:

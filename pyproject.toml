@@ -44,6 +44,9 @@ evernote-to-gdrive = "evernote_to_gdrive.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"evernote_to_gdrive._bundled_auth" = ["client_secrets.json"]
+
 [tool.pytest.ini_options]
 pythonpath = ["tests/e2e"]
 addopts = "-v"

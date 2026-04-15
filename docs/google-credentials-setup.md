@@ -1,5 +1,7 @@
 # Setting Up Google Drive Credentials
 
+This is the manual fallback setup. Most users should not need it because normal `gdrive` runs can use the bundled project OAuth client and open the browser consent flow directly.
+
 By the end of this guide you will have a file called `client_secrets.json` in the folder where you'll run the tool. That file is what lets the tool upload your notes to your Google Drive.
 
 **Time needed:** about 10 minutes  

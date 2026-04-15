@@ -4,7 +4,7 @@
 [![Python >=3.10](https://img.shields.io/pypi/pyversions/evernote-to-gdrive)](https://pypi.org/project/evernote-to-gdrive/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-A migration tool that converts an <a href="https://github.com/vzhd1701/evernote-backup" target="_blank" rel="noopener noreferrer">evernote-backup</a> `.enex` export into Google Drive or a local folder tree. Preserves your notebook and stack hierarchy, attachments, tags, timestamps, inter-note links, and web-clip fidelity.
+A migration tool that converts an [evernote-backup](https://github.com/vzhd1701/evernote-backup) `.enex` export into Google Drive or a local folder tree. Preserves your notebook and stack hierarchy, attachments, tags, timestamps, inter-note links, and web-clip fidelity.
 
 > **Not a sync tool.** Run it once to migrate, then you're done.
 
@@ -34,9 +34,7 @@ macOS, Windows, and Linux.
 
 2. [Install the package](#install-the-package)
 
-3. [Set up Google credentials](#set-up-google-credentials) (gdrive mode)
-
-4. [Migrate](#migrate-to-google-drive)
+3. [Migrate](#migrate-to-google-drive)
  
 
 ## Setup
@@ -55,7 +53,7 @@ evernote-backup export ./export
 ```
 
 This produces an `./export/` tree where stack-named subdirectories contain one `.enex` per notebook — exactly the layout `evernote-to-gdrive` expects.
-See the <a href="https://github.com/vzhd1701/evernote-backup" target="_blank" rel="noopener noreferrer">evernote-backup docs</a> for more details.
+See the [evernote-backup docs](https://github.com/vzhd1701/evernote-backup) for more details.
 
 **Alternative — Evernote's built-in export:**
 Right-click a notebook → *Export Notes* → `.enex`. Only practical for a small number of notebooks. Drop the files into a folder and pass that as input.
@@ -68,7 +66,7 @@ Two options — pick one.
 
 #### Option 1: Standalone binary (no Python required)
 
-Pre-built single-file binaries for macOS, Windows, and Linux are attached to each <a href="https://github.com/meizy/evernote-to-gdrive/releases/latest" target="_blank" rel="noopener noreferrer">GitHub Release</a>. Download the archive for your OS and extract it — you'll get a single `evernote-to-gdrive` executable.
+Pre-built single-file binaries for macOS, Windows, and Linux can be found [here](https://github.com/meizy/evernote-to-gdrive/releases/latest). Download the archive for your OS and extract it — you'll get a single `evernote-to-gdrive` executable.
 
 ```bash
 # macOS / Linux
@@ -77,10 +75,8 @@ chmod +x evernote-to-gdrive
 ./evernote-to-gdrive install-browsers   # only needed for web clips
 ```
 
-> On macOS, if you get a "cannot be verified" error - remove the quarantine attribute:
-> ```bash
-> xattr -d com.apple.quarantine ./evernote-to-gdrive
-> ```
+On macOS, if you get a "cannot be verified" error - remove the quarantine attribute:  
+`xattr -d com.apple.quarantine ./evernote-to-gdrive`
 
 On Windows, unzip the archive, then from that folder:
 
@@ -106,24 +102,9 @@ evernote-to-gdrive install-browsers
 
 You can skip the install-browsers command if you don't have web clips in your evernote.
 
-### Set up Google credentials
-
-> Migrating to a **local folder** (`--output local`)? Skip this section — no Google account needed.
-
-If you're familiar with Google Cloud Console, the short version follows. Otherwise, follow the step-by-step walkthrough instructions: [Google credentials setup](./docs/google-credentials-setup.md). The short version:
-
-1. Create a project, enable the **Google Drive API**, create a **Desktop app** OAuth 2.0 client, and add yourself as a test user.
-2. Download the client JSON and save it as `client_secrets.json` in the folder where you'll run the tool.
-3. Authenticate once:
-   ```bash
-   evernote-to-gdrive auth
-   ```
-   A browser window will open for consent. Credentials are cached as `token.json` in the same folder and reused on subsequent runs.
-
-
 ## Usage
 
-Once you have your `.enex` export and (for gdrive mode) your credentials in place:
+Once you have your `.enex` export:
 
 ### Inspect before migrating: 
 
@@ -142,6 +123,13 @@ evernote-to-gdrive migrate ./export
 ```
 
 Notes are created under a folder called `Evernote Migration` in your My Drive. Use `--dest` to choose a different location.
+
+On the first `gdrive` run, the tool opens your browser and asks for Google Drive permission.
+
+- If Google shows an unverified-app warning, click **Continue**.
+- On the permissions screen, approve the requested Google Drive access and click **Continue**.
+
+After that, the saved token is reused on later runs.
 
 > **Migration time** — gdrive mode is throttled to ~3 Drive API writes/second. Actual duration depends on note count, attachment sizes, and network speed. As a rough reference, ~1,000 notes took about 1 hour. Local mode is much faster: less than a minue for 1,000 notes.
 
@@ -361,12 +349,14 @@ evernote-to-gdrive migrate ./export --verbose                  # per-note progre
 
 ### Custom credentials location
 
-By default credentials are read from the current working directory. Use `--secrets-folder` to point to a different directory — it must contain `client_secrets.json` (and `token.json` after the first `auth` run):
+By default the first `gdrive` run stores credentials in the current working directory. Use `--secrets-folder` to point to a different directory:
 
 ```bash
 evernote-to-gdrive auth    --secrets-folder /path/to/creds
 evernote-to-gdrive migrate ./export --secrets-folder /path/to/creds
 ```
+
+Most users should not need a manual `client_secrets.json` anymore. If the bundled auth flow does not work for your environment, the old manual setup guide is still available at [docs/google-credentials-setup.md](./docs/google-credentials-setup.md).
 
 
 ## Reference
@@ -389,7 +379,7 @@ Authenticate with Google and save `token.json`.
 
 | Flag | Default | Description |
 |---|---|---|
-| `--secrets-folder PATH` | current directory | Folder containing `client_secrets.json` / `token.json`. |
+| `--secrets-folder PATH` | current directory | Folder containing `token.json` and, if needed, `client_secrets.json`. |
 
 ### `migrate` options
 
@@ -401,7 +391,7 @@ Migrate Evernote notes to Google Drive (`gdrive`) or a local folder (`local`).
 |---|---|---|
 | `--output {gdrive\|local}` | `gdrive` | `gdrive`: upload to Google Drive. `local`: save to a local folder. |
 | `--dest PATH` | `Evernote Migration` | Drive folder path (gdrive) or local folder (local),  can be multi-level (`folder1/folder2`)|
-| `--secrets-folder PATH` | current directory | Folder containing `client_secrets.json` / `token.json` (gdrive only). |
+| `--secrets-folder PATH` | current directory | Folder containing `token.json` and, if needed, `client_secrets.json` (gdrive only). |
 | `--log-file PATH` | None | Write migration log (CSV) to this file. |
 
 **Filtering**
@@ -473,9 +463,9 @@ Inspect `.enex` files and report statistics (no upload).
 
 ## Getting help
 
-If you found a bug or have a feature request, please <a href="https://github.com/meizy/evernote-to-gdrive/issues" target="_blank" rel="noopener noreferrer">open a new issue</a>.
+If you found a bug or have a feature request, please [open a new issue](https://github.com/meizy/evernote-to-gdrive/issues).
 
-If you have a question about the tool or have difficulty using it, you are welcome to the <a href="https://github.com/meizy/evernote-to-gdrive/discussions" target="_blank" rel="noopener noreferrer">discussions page</a>.
+If you have a question about the tool or have difficulty using it, you are welcome to the [discussions page](https://github.com/meizy/evernote-to-gdrive/discussions).
 
 
 ## License

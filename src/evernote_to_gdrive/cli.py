@@ -154,7 +154,7 @@ def analyze(ctx, input: Path, all_reports_flag: bool, csv_dir: Path | None, bidi
 
 @main.command()
 @click.option("--secrets-folder", type=click.Path(path_type=Path), default=None,
-              help="Folder containing client_secrets.json / token.json. Default: current directory.")
+              help="Folder containing token.json and optional client_secrets.json. Default: current directory.")
 def auth(secrets_folder: Path | None):
     """Authenticate with Google and save token.json."""
     from .auth import get_services, resolve_secrets_dir, token_path
@@ -305,7 +305,7 @@ def _build_migration_options(
               default="light", show_default=True,
               help="Theme for web clip rendering.")
 @click.option("--secrets-folder", type=click.Path(path_type=Path), default=None,
-              help="Folder containing client_secrets.json / token.json. Default: current directory.")
+              help="Folder containing token.json and optional client_secrets.json. Default: current directory.")
 @click.option("--gdrive-modified",
               type=click.Choice(["created", "updated"], case_sensitive=False),
               default="created", show_default=True,
