@@ -8,6 +8,8 @@ on:
 
 jobs:
   build:
+    env:
+      GOOGLE_CLIENT_SECRETS_JSON: ${{ secrets.GOOGLE_CLIENT_SECRETS_JSON }}
     strategy:
       fail-fast: false
       matrix:
@@ -28,6 +30,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      - name: Materialize bundled OAuth client
+        shell: bash
+        run: |
+          if [ -z "$GOOGLE_CLIENT_SECRETS_JSON" ]; then
+            echo "Missing required secret: GOOGLE_CLIENT_SECRETS_JSON" >&2
+            echo "Tagged release builds are expected to be self-contained and must bundle client_secrets.json." >&2
+            exit 1
+          fi
+          mkdir -p .auth
+          printf '%s' "$GOOGLE_CLIENT_SECRETS_JSON" > .auth/client_secrets.json
 
       - name: Install project with build extras
         run: pip install -e ".[build]"
