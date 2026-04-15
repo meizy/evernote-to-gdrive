@@ -418,9 +418,9 @@ Migrate Evernote notes to Google Drive (`gdrive`) or a local folder (`local`).
 |---|---|---|
 | `--attachments {doc\|files}` | `doc` | Attachment-only notes with multiple non-image attachments: `doc` creates a doc listing siblings, `files` writes sibling files only. |
 | `--web-clip {pdf\|doc}` | `pdf` | Output format for web clip notes: `pdf` renders a Reader-style PDF, `doc` creates a doc from cleaned HTML. |
-| `--clip-theme {light\|dark}` | `light` | Theme for web clip rendering. |
+| `--clip-theme {light\|dark}` | `light` | Theme for web clip PDFs. |
 | `--no-tags` | | Do not include Evernote tags in the output. |
-| `--skip-note-links` | | Skip rewriting `evernote:///` inter-note links. |
+| `--skip-note-links` | | Skip processing inter-note links. |
 | `--gdrive-modified {created\|updated}` | `created` | Timestamp used as Drive `modifiedTime` (gdrive only). |
 
 **Run control**
