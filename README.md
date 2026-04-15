@@ -134,7 +134,10 @@ and will create its own `a` folder instead.
   - If Google shows an unverified-app warning, click **Continue**.
   - On the permissions screen, approve the requested Google Drive access and click **Continue**.
 
-> **Migration time** — gdrive mode is throttled to ~3 Drive API writes/second. Actual duration depends on note count, attachment sizes, and network speed. As a rough reference, ~1,000 notes took about 1 hour. Local mode is much faster: less than a minue for 1,000 notes.
+> **Migration time** — gdrive mode is throttled to ~3 Drive API writes/second. 
+Actual duration depends on note count, attachment sizes, and network speed. 
+As a rough reference, ~1,000 notes take about 1 hour. 
+Local mode is much faster: less than a minute for 1,000 notes.
 
 ### Migrate to a local folder (no Google account needed):
 
