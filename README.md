@@ -4,7 +4,7 @@
 [![Python >=3.10](https://img.shields.io/pypi/pyversions/evernote-to-gdrive)](https://pypi.org/project/evernote-to-gdrive/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-A migration tool that converts an [evernote-backup](https://github.com/vzhd1701/evernote-backup) `.enex` export into Google Drive or a local folder tree. Preserves your notebook and stack hierarchy, attachments, tags, timestamps, inter-note links, and web-clip fidelity.
+A migration tool that converts an <a href="https://github.com/vzhd1701/evernote-backup" target="_blank" rel="noopener noreferrer">evernote-backup</a> `.enex` export into Google Drive or a local folder tree. Preserves your notebook and stack hierarchy, attachments, tags, timestamps, inter-note links, and web-clip fidelity.
 
 > **Not a sync tool.** Run it once to migrate, then you're done.
 
@@ -55,7 +55,7 @@ evernote-backup export ./export
 ```
 
 This produces an `./export/` tree where stack-named subdirectories contain one `.enex` per notebook — exactly the layout `evernote-to-gdrive` expects.
-See the [evernote-backup docs](https://github.com/vzhd1701/evernote-backup) for more details.
+See the <a href="https://github.com/vzhd1701/evernote-backup" target="_blank" rel="noopener noreferrer">evernote-backup docs</a> for more details.
 
 **Alternative — Evernote's built-in export:**
 Right-click a notebook → *Export Notes* → `.enex`. Only practical for a small number of notebooks. Drop the files into a folder and pass that as input.
@@ -68,7 +68,7 @@ Two options — pick one.
 
 #### Option 1: Standalone binary (no Python required)
 
-Pre-built single-file binaries for macOS, Windows, and Linux are attached to each [GitHub Release](https://github.com/meizy/evernote-to-gdrive/releases/latest). Download the archive for your OS and extract it — you'll get a single `evernote-to-gdrive` executable.
+Pre-built single-file binaries for macOS, Windows, and Linux are attached to each <a href="https://github.com/meizy/evernote-to-gdrive/releases/latest" target="_blank" rel="noopener noreferrer">GitHub Release</a>. Download the archive for your OS and extract it — you'll get a single `evernote-to-gdrive` executable.
 
 ```bash
 # macOS / Linux
@@ -473,9 +473,9 @@ Inspect `.enex` files and report statistics (no upload).
 
 ## Getting help
 
-If you found a bug or have a feature request, please [open a new issue](https://github.com/meizy/evernote-to-gdrive/issues).
+If you found a bug or have a feature request, please <a href="https://github.com/meizy/evernote-to-gdrive/issues" target="_blank" rel="noopener noreferrer">open a new issue</a>.
 
-If you have a question about the tool or have difficulty using it, you are welcome to the [discussions page](https://github.com/meizy/evernote-to-gdrive/discussions).
+If you have a question about the tool or have difficulty using it, you are welcome to the <a href="https://github.com/meizy/evernote-to-gdrive/discussions" target="_blank" rel="noopener noreferrer">discussions page</a>.
 
 
 ## License
