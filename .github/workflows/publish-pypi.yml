@@ -1,0 +1,47 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    env:
+      GOOGLE_CLIENT_SECRETS_JSON: ${{ secrets.GOOGLE_CLIENT_SECRETS_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Materialize bundled OAuth client
+        shell: bash
+        run: |
+          if [ -z "$GOOGLE_CLIENT_SECRETS_JSON" ]; then
+            echo "Missing required secret: GOOGLE_CLIENT_SECRETS_JSON" >&2
+            echo "Tagged PyPI release builds are expected to be self-contained and must bundle client_secrets.json." >&2
+            exit 1
+          fi
+          mkdir -p .auth
+          printf '%s' "$GOOGLE_CLIENT_SECRETS_JSON" > .auth/client_secrets.json
+
+      - name: Verify tag matches pyproject version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg=$(python -c "import tomllib,pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          echo "tag=$tag pyproject=$pkg"
+          test "$tag" = "$pkg"
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade build
+          python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

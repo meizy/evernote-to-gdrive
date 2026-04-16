@@ -1,0 +1,80 @@
+name: Build standalone binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    env:
+      GOOGLE_CLIENT_SECRETS_JSON: ${{ secrets.GOOGLE_CLIENT_SECRETS_JSON }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            archive: evernote-to-gdrive-linux-x86_64.tar.gz
+            binary: evernote-to-gdrive
+          - os: windows-latest
+            archive: evernote-to-gdrive-windows-x86_64.zip
+            binary: evernote-to-gdrive.exe
+          - os: macos-latest
+            archive: evernote-to-gdrive-macos-arm64.tar.gz
+            binary: evernote-to-gdrive
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Materialize bundled OAuth client
+        shell: bash
+        run: |
+          if [ -z "$GOOGLE_CLIENT_SECRETS_JSON" ]; then
+            echo "Missing required secret: GOOGLE_CLIENT_SECRETS_JSON" >&2
+            echo "Tagged release builds are expected to be self-contained and must bundle client_secrets.json." >&2
+            exit 1
+          fi
+          mkdir -p .auth
+          printf '%s' "$GOOGLE_CLIENT_SECRETS_JSON" > .auth/client_secrets.json
+
+      - name: Install project with build extras
+        run: pip install -e ".[build]"
+
+      - name: Build with PyInstaller
+        run: pyinstaller evernote-to-gdrive.spec --clean --noconfirm
+
+      - name: Package archive (tar.gz)
+        if: runner.os != 'Windows'
+        run: tar -czf "${{ matrix.archive }}" -C dist "${{ matrix.binary }}"
+
+      - name: Package archive (zip)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path "dist/${{ matrix.binary }}" -DestinationPath "${{ matrix.archive }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive }}
+          path: ${{ matrix.archive }}
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
