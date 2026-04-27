@@ -1,0 +1,46 @@
+# Sensitive config
+.auth/
+src/evernote_to_gdrive/_bundled_auth/client_secrets.json
+.claude/
+CLAUDE.md
+AGENTS.md
+
+# Evernote exports
+export/
+output/
+Evernote Migration/
+
+# Database
+*.db
+
+# Spike
+spike_out/
+
+# E2e test output
+tests/output/
+
+# macOS download artifacts
+*.download/
+
+# Cache
+.cache/
+temp/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv*/
+dist/
+build/
+
+# macOS
+.DS_Store
+profile.*
+note-to-myself.md
+REQUIREMENTS.md
+token.json
+client_secrets.json
+debug.log
+docs/build-and-release.md
+docs/rtl-processing.md
