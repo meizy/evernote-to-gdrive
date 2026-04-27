@@ -27,7 +27,7 @@ from evernote_to_gdrive.models import (
 from helpers import assert_status_all_success, docx_external_hyperlinks
 
 FIXTURES_DIR = Path(__file__).parent.parent / "input" / "sanity"
-DEST = "evernote-to-gdrive/tests/sanity"
+DEST = "evernote-to-gdrive-testing/sanity"
 
 pytestmark = pytest.mark.gdrive
 
@@ -62,6 +62,15 @@ _EXPECTED_SANITY_FILES = {
 }
 
 
+def _delete_dest_folder(drive, dest: str) -> None:
+    parent_id: str | None = None
+    for part in [p for p in dest.split("/") if p]:
+        parent_id = find_folder(drive, part, parent_id=parent_id)
+        if not parent_id:
+            return
+    drive.files().delete(fileId=parent_id).execute()
+
+
 @pytest.fixture(scope="module")
 def gdrive_migration(request, gdrive_secrets_dir: Path):
     print(f"\n>>> GDrive output → {DEST}")
@@ -73,13 +82,7 @@ def gdrive_migration(request, gdrive_secrets_dir: Path):
         raise
 
     # Clean up any previous test run (mirrors local sanity's shutil.rmtree)
-    eg_id = find_folder(drive, "evernote-to-gdrive")
-    if eg_id:
-        tests_id = find_folder(drive, "tests", parent_id=eg_id)
-        if tests_id:
-            sanity_id = find_folder(drive, "sanity", parent_id=tests_id)
-            if sanity_id:
-                drive.files().delete(fileId=sanity_id).execute()
+    _delete_dest_folder(drive, DEST)
 
     options = MigrationOptions(
         output_mode=OutputMode.GOOGLE,
@@ -97,13 +100,7 @@ def gdrive_migration(request, gdrive_secrets_dir: Path):
     yield drive, records
 
     if request.config.getoption("--cleanup-gdrive"):
-        eg_id = find_folder(drive, "evernote-to-gdrive")
-        if eg_id:
-            tests_id = find_folder(drive, "tests", parent_id=eg_id)
-            if tests_id:
-                sanity_id = find_folder(drive, "sanity", parent_id=tests_id)
-                if sanity_id:
-                    drive.files().delete(fileId=sanity_id).execute()
+        _delete_dest_folder(drive, DEST)
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
